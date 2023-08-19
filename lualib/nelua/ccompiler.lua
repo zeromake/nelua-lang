@@ -147,13 +147,18 @@ end
 
 local function get_compile_args(cfile, binfile, cflags)
   local ccflags = get_compiler_flags(config.cc)
+  local outfile = string.match(binfile, ".*%."):sub(1, -2)
   local templatedefs = {
     cfile = cfile,
     binfile = binfile,
+    outfile = outfile,
     cflags = cflags,
     cc = config.cc
   }
   local cmd = ccflags.cmd_compile
+  if type(cmd) == 'function' then
+    cmd = cmd(templatedefs)
+  end
   while true do
     local newcmd = pegger.substitute(cmd, templatedefs)
     if newcmd == cmd then break end

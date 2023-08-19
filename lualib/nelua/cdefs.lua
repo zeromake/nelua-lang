@@ -145,6 +145,24 @@ compilers_flags['nvcc'] = tabler.updatecopy(compilers_flags.gcc, {
 -- Zig CC
 compilers_flags['zig cc'] = compilers_flags.clang
 
+compilers_flags['cl'] = tabler.updatecopy(compilers_flags.cc, {
+  cflags_base = "-nologo /utf-8 /EHsc",
+  cflags_sanitize = "/fsanitize=address",
+  cflags_devel = "/Zi",
+  cflags_debug = '/Od /FS /Fd"$(outfile).pdb"',
+  cflags_release = "/O2 -DNDEBUG", 
+  cflags_maximum_performance = "/Ox /DNDEBUG",
+  cflags_shared_lib = "/LD",
+  cflags_assembly = '/Fa"$(binfile)"',
+  cflags_object = '/c /Fo"$(outfile).o"',
+  cmd_compile = function(meta)
+    local out = string.find(meta.cflags, "/F[ae]") and '' or ' /Fe"$(binfile)"'
+    return '$(cc) $(cflags)'..out..' "$(cfile)"'
+  end,
+  cmd_info = '$(cc) /E /EP $(cflags) "$(cfile)"',
+  cmd_defines = '$(cc) /E /dM "$(cfile) "$(cflags)',
+})
+
 -- Code to detect target features.
 cdefs.target_info_code = [[
 /* OS */

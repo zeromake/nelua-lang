@@ -22,6 +22,8 @@ neluacfg.lua
 *.zst
 *.obj
 *.luabc
+*.pdb
+*.ilk
 .vscode
 tempCodeRunner.*
 /play
@@ -32,3 +34,5 @@ preview.md
 test_file.tmp
 require_tmp.nelua
 *-bindings.nelua
+/.xmake
+/build
