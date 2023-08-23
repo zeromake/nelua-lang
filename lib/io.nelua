@@ -287,4 +287,16 @@ function io.lines(filename: facultative(string), fmt: overload(integer,string,ni
   ## end
 end
 
+function io.readfile(filename: string)
+  local file: filestream <close> = io.open(filename, 'r')
+  assert(file:isopen(), 'cannot open file'..filename)
+  return file:read('a')
+end
+
+function io.writefile(filename: string, context: string)
+  local file: filestream <close> = io.open(filename, 'wb')
+  assert(file:isopen(), 'cannot open file'..filename)
+  file:write(context)
+end
+
 return io

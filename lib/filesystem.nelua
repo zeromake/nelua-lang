@@ -1,0 +1,101 @@
+require 'string'
+require 'allocators.default'
+
+## if ccinfo.is_windows then
+local WIN32_FIND_DATAA: type <cimport,cinclude'<windows.h>',cincomplete> = @record{
+    cFileName: cstring,
+}
+local function FindFirstFileA(lpFileName: cstring <const>, hData: *WIN32_FIND_DATAA): pointer <cimport,cinclude'<fileapi.h>'> end
+local function FindNextFileA(hFind: pointer, hData: *WIN32_FIND_DATAA): cint <cimport,cinclude'<fileapi.h>'> end
+local function GetFullPathNameA(
+    lpFileName: cstring <const>,
+    nBufferLength: clong,
+    lpBuffer: cstring,
+    lpFilePart: *cstring
+): clong <cimport,cinclude'<fileapi.h>'> end
+local function FindClose(hFind: pointer): cchar <cimport,cinclude'<fileapi.h>'> end
+local fsDirectoryIterator: type = @record{
+    dir: pointer,
+    data: WIN32_FIND_DATAA,
+    first: boolean,
+}
+
+## else
+local dirent: type <cimport,cinclude'<dirent.h>',cincomplete,ctypedef'dirent'> = @record{
+    d_name: cstring,
+}
+local function opendir(path: cstring): pointer <cimport,cinclude'<dirent.h>'> end
+local function readdir(dir: pointer): *dirent <cimport,cinclude'<dirent.h>'> end
+local function closedir(dir: pointer): void <cimport,cinclude'<dirent.h>'> end
+local fsDirectoryIterator: type = @record{
+    dir: pointer,
+}
+## end
+global filesystem = @record{}
+
+function fsDirectoryIterator:__next(index: integer): (boolean, integer, string)
+## if ccinfo.is_windows then
+    while self.first or FindNextFileA(self.dir, &self.data) ~= 0 do
+        if self.first then
+            self.first = false
+        end
+        local name = string.copy(self.data.cFileName)
+        if name == "." or name == ".." then
+            continue
+        end
+        return true, index+1, name
+    end
+## else
+    local d = (@dirent){}
+    while true do
+        local d = readdir(self.dir)
+        if not d then
+            break
+        end
+        local name = string.copy(d.d_name)
+        if name == "." or name == ".." then
+            continue
+        end
+        return true, index+1, name
+    end
+## end
+    return false, -1, (@string){}
+end
+
+function fsDirectoryIterator:__pairs(): (auto, *fsDirectoryIterator, integer)
+    return fsDirectoryIterator.__next, self, -1
+end
+
+function fsDirectoryIterator:__close()
+## if ccinfo.is_windows then
+    FindClose(self.dir)
+## else
+    closedir(self.dir)
+## end
+end
+
+function filesystem.directory(path: string): (fsDirectoryIterator, string, integer)
+    local iter = (@fsDirectoryIterator){}
+## if ccinfo.is_windows then
+    if #path > 255 then
+        local size = GetFullPathNameA(path, 0, nilptr, nilptr)
+        local ppath = (@*[0]cchar)(default_allocator:xalloc0((size + 5) * #cchar))
+        GetFullPathNameA(path, size, ppath, nilptr)
+        path = "\\\\?\\"..string(ppath)
+        default_allocator:dealloc(ppath)
+    end
+    if not path:endswith("*") then
+      if not path:endswith("\\") and not path:endswith("/") then
+        path = path.."\\"
+      end
+      path = path.."*"
+    end
+    iter.dir = FindFirstFileA(path, &iter.data)
+    iter.first = true
+## else
+    iter.dir = opendir(path)
+## end
+    return iter, (@string){}, 0
+end
+
+return filesystem

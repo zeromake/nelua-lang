@@ -12,6 +12,7 @@ local memoize = require 'nelua.utils.memoize'
 local version = require 'nelua.version'
 local iterators = require 'nelua.utils.iterators'
 local platform = require 'nelua.utils.platform'
+local lfs = require 'lfs'
 
 local compiler = {
   source_extension = '.c'
@@ -395,6 +396,77 @@ function compiler.strip_binary(binfile, compileopts)
   end --luacov:enable
 end
 
+local manifestContent = [[
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3" >
+  <application>
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+  <assemblyIdentity
+      type="win32"
+      version="1.0.0.0"
+      processorArchitecture="*"
+      name="%s"
+  />
+  <description>%s</description>
+  <asmv3:application>
+    <asmv3:windowsSettings xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </asmv3:windowsSettings>
+  </asmv3:application>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+      <!-- Windows Vista -->
+      <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}"/>
+      <!-- Windows 7 -->
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>
+      <!-- Windows 8 -->
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>
+    </application>
+  </compatibility>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+          type="win32"
+          name="Microsoft.Windows.Common-Controls"
+          version="6.0.0.0"
+          processorArchitecture="*"
+          publicKeyToken="6595b64144ccf1df"
+          language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>
+]]
+
+function compiler.manifest_binary(binfile)
+  local mt = compiler.find_binutil('mt')
+  if not mt then
+    return
+  end
+  os.sleep(0.3)
+  local flags = sstream()
+  flags:add(mt)
+  flags:add(' ')
+  local dir = fs.dirname(binfile)
+  local f = fs.basename(binfile)
+  local manifest = fs.join(dir, f..".manifest")
+  fs.makefile(manifest, string.format(manifestContent, f, f))
+  flags:add(string.format("-manifest '%s' -outputresource:%s;#1", manifest, f))
+  local mtcmd = flags:tostring()
+  if config.verbose then console.info(mtcmd) end
+  if not executor.rexec(mtcmd, nil, config.redirect_exec) then --luacov:disable
+    except.raisef("manifest for '%s' failed", binfile)
+  end --luacov:enable
+end
+
 function compiler.setup_env(cflags)
   if config.sanitize or cflags:match('%-fsanitize=[%w_,-]*undefined') then
     -- enable sanitizer tracebacks for better debugging experience
@@ -446,6 +518,9 @@ function compiler.compile_binary(cfile, outfile, compileopts)
   local cccmd = get_compile_args(cfile, midfile, cflags)
   if config.verbose then console.info(cccmd) end
   -- compile the file
+  local dir = fs.dirname(binfile)
+  local pwd = lfs.currentdir()
+  lfs.chdir(dir)
   if not executor.rexec(cccmd, nil, config.redirect_exec) then --luacov:disable
     except.raisef("C compilation for '%s' failed", binfile)
   end --luacov:enable
@@ -457,6 +532,10 @@ function compiler.compile_binary(cfile, outfile, compileopts)
   if config.strip_bin and (config.shared_lib or isexe) and (not ccinfo.is_mirc or ccinfo.is_wasm) then
     compiler.strip_binary(binfile, compileopts)
   end
+  if isexe and ccinfo.is_windows then
+    compiler.manifest_binary(binfile)
+  end
+  lfs.chdir(pwd)
   return binfile, isexe
 end
 

@@ -886,6 +886,26 @@ function string.packsize(fmt: string): isize
   return strpack.packsize(fmt)
 end
 
+function string:startswith(s: string): boolean
+  if #s == 0 then
+    return true
+  end
+  if #$self == 0 or #s > #$self then
+    return false
+  end
+  return string.subview(self, 1, #s) == s
+end
+
+function string:endswith(s: string): boolean
+  if #s == 0 then
+    return true
+  end
+  if #$self == 0 or #s > #$self then
+    return false
+  end
+  return string.subview(self, #$self - #s + 1) == s
+end
+
 local strconv: type = require 'detail.strconv'
 
 ----------------------------------------------------------------------------------------------------

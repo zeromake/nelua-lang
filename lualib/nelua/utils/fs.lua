@@ -526,9 +526,9 @@ function fs.findcc()
   else
     search_ccs = {}
   end --luacov:enable
+  table.insert(search_ccs, 'cl')
   table.insert(search_ccs, 'gcc')
   table.insert(search_ccs, 'clang')
-  table.insert(search_ccs, 'cl')
   for _,cc in ipairs(search_ccs) do
     if fs.findbinfile(cc) then
       return cc
