@@ -425,9 +425,11 @@ static int os_sleep (lua_State *L) {
   }
 #else
   if(secs > 0) {
-    timespec ts = {(time_t)floor(secs), (long)((secs % 1) * 1000000000.0)};
+    double m = modf((double)secs, 1);
+    struct timespec ts = {(time_t)floor(secs), (long)(m * 1000000000.0)};
     {
       bool stop = false;
+      int res = 0;
       do {
         errno = 0;
         res = nanosleep((&ts), (&ts));

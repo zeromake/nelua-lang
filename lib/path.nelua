@@ -1,0 +1,62 @@
+require 'string'
+
+global path = @record{
+    _prefixLength: isize, -- \\?\ 的前缀略过
+    _path: string,
+}
+
+## if ccinfo.is_windows then
+global path.preferred_separator: byte <comptime> = '\\'_b
+## else
+global path.preferred_separator: byte <comptime> = '/'_b
+## end
+
+function path.create(p: string)
+    return (@path){
+        _prefixLength = 0,
+        _path = p,
+    }
+end
+
+function path:root_name_length(): isize
+    if #self._path >= self._prefixLength + 2 then
+## if ccinfo.is_windows then
+        local first = strchar.toupper(self._path[self._prefixLength + 1])
+        if first >= 'A'_b and first <= 'Z'_b and self._path[self._prefixLength + 2] == ':'_b then
+            return 2
+        end
+## else
+        local first = self._path[self._prefixLength + 1]
+        local second = self._path[self._prefixLength + 2]
+        if first == path.preferred_separator and second ~= path.preferred_separator then
+            local pos = string.find(self._path, string.char(path.preferred_separator), 4)
+            if pos == 0 then
+                return #self._path
+            else
+                return pos - 1
+            end
+        end
+## end
+    end
+    return 0
+end
+
+function path:has_root_name()
+    return self:root_name_length() > 0
+end
+
+function path:has_root_directory()
+    local rootLen: isize = self._prefixLength + self:root_name_length()
+    return #self._path > rootLen and self._path[rootLen+1] == path.preferred_separator
+end
+
+function path:is_absolute()
+## if ccinfo.is_windows then
+    return self:has_root_name() and self:has_root_directory()
+## else
+    return self:has_root_directory()
+## end
+end
+
+
+return path
