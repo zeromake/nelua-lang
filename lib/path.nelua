@@ -1,4 +1,6 @@
+local strchar: type = require 'detail.strchar'
 require 'string'
+require 'math'
 
 global path = @record{
     _prefixLength: isize, -- \\?\ 的前缀略过
@@ -10,13 +12,8 @@ global path.preferred_separator: byte <comptime> = '\\'_b
 ## else
 global path.preferred_separator: byte <comptime> = '/'_b
 ## end
+global path.generic_separator: byte <comptime> = '/'_b
 
-function path.create(p: string)
-    return (@path){
-        _prefixLength = 0,
-        _path = p,
-    }
-end
 
 function path:root_name_length(): isize
     if #self._path >= self._prefixLength + 2 then
@@ -56,6 +53,57 @@ function path:is_absolute()
 ## else
     return self:has_root_directory()
 ## end
+end
+
+function path:is_relative()
+    return not self:is_absolute()
+end
+
+function path:root_name()
+    local start = self._prefixLength + 1
+    return (@path){0, string.subview(self._path, start, start + self:root_name_length() - 1)};
+end
+
+function path:__tostring(): string <polymorphic>
+    return string.subview(self._path, self._prefixLength+1)
+end
+
+function path:relative_path()
+    local rootPathLen = self._prefixLength + self:root_name_length() + (self:has_root_directory() and 1 or 0);
+    return (@path){0, string.subview(self._path, math.min(rootPathLen + 1, #self._path + 1))};
+end
+
+function path:postprocess_path()
+    local sb: stringbuilder
+    local prev: byte = 0
+    for _, b in ipairs(self._path) do
+## if ccinfo.is_windows then
+        if b == path.generic_separator then
+            b = path.preferred_separator
+        end
+## end
+        if b == path.preferred_separator and prev == path.preferred_separator then
+            continue
+        end
+        sb:writebyte(b)
+        prev = b
+    end
+    self._path = sb:promote()
+## if ccinfo.is_windows then
+    if self:is_absolute() and #self._path >= 256 and not self._path:startswith("\\\\?\\") then
+        self._path = "\\\\?\\" .. self._path;
+        self._prefixLength = 4
+    end
+## end
+end
+
+function path.create(p: string)
+    local s = (@path){
+        _prefixLength = 0,
+        _path = p,
+    }
+    s:postprocess_path()
+    return s
 end
 
 
