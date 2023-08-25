@@ -42,7 +42,7 @@ require 'span'
   sequenceT.is_contiguous = true
   sequenceT.is_container = true
   sequenceT.is_sequence = true
-  sequenceT.is_oneindexing = true -- used in 'ipairs'
+  sequenceT.is_oneindexing = false -- used in 'ipairs'
   sequenceT.subtype = T
   ]]
 
@@ -106,11 +106,10 @@ require 'span'
   -- Reserve at least `n` elements in the sequence storage.
   function sequenceT:reserve(n: usize): void
     self:_init()
-    local cap: usize = n + 1
+    local cap: usize = n
     local curcap: usize = self.impl.data.size
     if curcap >= cap then return end
     self.impl.data = self.allocator:xspanrealloc(self.impl.data, cap)
-    if unlikely(curcap == 0) then self.impl.data[0] = T() end
   end
 
   --[[
@@ -120,7 +119,7 @@ require 'span'
   function sequenceT:resize(n: usize): void
     self:reserve(n)
     if n > self.impl.size then
-      memory.zero(&self.impl.data[self.impl.size+1], (n-self.impl.size) * #T)
+      memory.zero(&self.impl.data[self.impl.size], (n-self.impl.size) * #T)
     end
     self.impl.size = n
   end
@@ -147,7 +146,6 @@ require 'span'
       check(cap > curcap, 'capacity overflow')
     end
     self.impl.data = self.allocator:xspanrealloc(self.impl.data, cap)
-    if unlikely(curcap == 0) then self.impl.data[0] = T() end
   end
 
   -- Inserts elements `v` at the end of the sequence.
@@ -157,7 +155,7 @@ require 'span'
     if unlikely(self.impl.size + 1 >= self.impl.data.size) then
       sequenceT_grow(self)
     end
-    self.impl.data[self.impl.size] = v
+    self.impl.data[self.impl.size-1] = v
   end
 
   --[[
@@ -166,8 +164,8 @@ require 'span'
   ]]
   function sequenceT:pop(): T <inline>
     assert(self.impl ~= nilptr and self.impl.size > 0, 'attempt to pop an empty sequence')
-    local ret: T = self.impl.data[self.impl.size]
     self.impl.size = self.impl.size - 1
+    local ret: T = self.impl.data[self.impl.size]
     return ret
   end
 
@@ -178,7 +176,7 @@ require 'span'
   ]]
   function sequenceT:insert(pos: usize, v: T): void
     self:_init()
-    assert(pos > 0 and pos <= self.impl.size + 1, 'position out of bounds')
+    assert(pos >= 0 and pos <= self.impl.size, 'position out of bounds')
     if unlikely(self.impl.size + 2 >= self.impl.data.size) then
       sequenceT_grow(self)
     end
@@ -211,7 +209,7 @@ require 'span'
   ]]
   function sequenceT:removevalue(v: T): boolean
     if not self.impl then return false end
-    for i:usize=1,self.impl.size do
+    for i:usize=0,<self.impl.size do
       if self.impl.data[i] == v then
         self:remove(i)
         return true
@@ -226,20 +224,20 @@ require 'span'
   ]]
   function sequenceT:removeif(pred: function(v: T): boolean): void
     if not self.impl then return end
-    local j: usize = 1
-    for i:usize=1,self.impl.size do
+    local j: usize = 0
+    for i:usize=0,<self.impl.size do
       if not pred(self.impl.data[i]) then
         self.impl.data[j] = self.impl.data[i]
         j = j + 1
       end
     end
-    self.impl.size = j - 1
+    self.impl.size = j
   end
 
   -- Returns the number of elements the sequence can store before triggering a reallocation.
   function sequenceT:capacity(): isize <inline>
     if unlikely(not self.impl or self.impl.data.size == 0) then return 0 end
-    return (@isize)(self.impl.data.size) - 1
+    return (@isize)(self.impl.data.size)
   end
 
   --[[
@@ -251,8 +249,8 @@ require 'span'
   ]]
   function sequenceT:__atindex(pos: usize): *T <inline>
     self:_init()
-    if unlikely(pos > self.impl.size) then
-      assert(pos == self.impl.size + 1, 'position out of bounds')
+    if unlikely(pos >= self.impl.size) then
+      assert(pos == self.impl.size, 'position out of bounds')
       self.impl.size = self.impl.size + 1
       if unlikely(self.impl.size + 1 > self.impl.data.size) then
         sequenceT_grow(self)
@@ -282,8 +280,8 @@ require 'span'
     local self: sequenceT
     self:reserve(#values)
     self.impl.size = #values
-    for i:usize=1,#values do
-      self.impl.data[i] = values[i-1]
+    for i:usize=0,<#values do
+      self.impl.data[i] = values[i]
     end
     return self
   end
@@ -299,8 +297,9 @@ require 'span'
   ]]
   function sequenceT:unpack(i: isize <comptime>, j: isize <comptime>) <inline>
     ## local rets = {}
-    assert(i >= 1 and j <= #self and i <= j, 'unpack out of range')
-    ## for k=i.value,j.value do
+    assert(i >= 0 and j <= #self and i <= j, 'unpack out of range')
+    ## local j_end = j.value - 1
+    ## for k=i.value,j_end do
       local #|'v'..k|#: T = self[#[k]#]
       ## table.insert(rets, aster.Id{'v'..k})
     ## end

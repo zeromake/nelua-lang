@@ -4,9 +4,9 @@ local Matrix = @sequence(sequence(number))
 
 local function matrix_transpose(a: Matrix, n: integer): Matrix
   local x: Matrix = {}
-  for i=1,n do
+  for i=0,<n do
     x[i] = {}
-    for j=1,n do
+    for j=0,<n do
       x[i][j] = a[j][i]
     end
   end
@@ -16,11 +16,11 @@ end
 local function matrix_multiply(a: Matrix, b: Matrix, n: integer): Matrix
   local x: Matrix = {}
   local c = matrix_transpose(b, n)
-  for i=1,n do
+  for i=0,<n do
     x[i] = {}
-    for j=1,n do
+    for j=0,<n do
       local sum = 0.0
-      for k=1,n do
+      for k=0,<n do
         sum = sum + a[i][k] * c[j][k]
       end
       x[i][j] = sum
@@ -31,9 +31,9 @@ end
 
 local function matrix_generate(n: integer): Matrix
   local a: Matrix, tmp = {}, 1.0 / n / n
-  for i=1,n do
+  for i=0,<n do
     a[i] = {}
-    for j=1,n do
+    for j=0,<n do
       a[i][j] = tmp * (i - j - 2) * (i + j - 2)
     end
   end

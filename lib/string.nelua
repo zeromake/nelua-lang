@@ -814,11 +814,11 @@ local function string_match(s: string, pattern: string, init: facultative(isize)
         local ok: boolean, capstr: string, capture: auto = ms:get_capture(i)
         assert(ok, capstr)
         assert(not capture:is_position(), 'position capture not supported yet')
-        captures[(@usize)(i+1)] = capstr
+        captures[(@usize)(i)] = capstr
       end
       return true, captures
     else -- nothing captured, then capture whole match
-      captures[1] = ms.source:subview(startpos, endpos)
+      captures[0] = ms.source:subview(startpos, endpos)
       return true, captures
     end
   else -- no match
@@ -835,7 +835,7 @@ A third, optional argument specifies where to start the search, its default valu
 ]]
 function string.match(s: string, pattern: string, init: facultative(isize)): (boolean, sequence(string))
   local ok: boolean, seq: sequence(string) = string_match(s, pattern, init)
-  for i: usize = 1, (@usize)(#seq) do
+  for i: usize = 0, <(@usize)(#seq) do
     seq[i] = string.copy(seq[i])
   end
   return ok, seq

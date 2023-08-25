@@ -113,10 +113,10 @@ require 'sequence'
 do -- sequence to span (by reference)
   local seq: sequence(integer) = {1,2,3,4}
   local s: span(integer) = &seq
-  assert(s.size == 4 and s.data == &seq[1])
+  assert(s.size == 4 and s.data == &seq[0])
   assert(#s == 4 and s[0] == 1 and s[1] == 2 and s[2] == 3 and s[3] == 4)
   s[0] = 5
-  assert(seq[1] == 5)
+  assert(seq[0] == 5)
   s = {}
   assert(#s == 0 and s.data == nilptr)
   seq:destroy()
@@ -125,10 +125,10 @@ end
 do -- sequence to span (by value)
   local seq: sequence(integer) = {1,2,3,4}
   local s: span(integer) = seq
-  assert(s.size == 4 and s.data == &seq[1])
+  assert(s.size == 4 and s.data == &seq[0])
   assert(#s == 4 and s[0] == 1 and s[1] == 2 and s[2] == 3 and s[3] == 4)
   s[0] = 5
-  assert(seq[1] == 5)
+  assert(seq[0] == 5)
   s = {}
   assert(#s == 0 and s.data == nilptr)
   seq:destroy()

@@ -148,7 +148,7 @@ it("program arguments", function()
     assert(arg[1] == 'a')
     assert(arg[2] == 'b')
     assert(arg[3] == 'c')
-    assert(#arg == 3)
+    assert(#arg == 4)
   ]], 'a', 'b', 'c'})
 end)
 
