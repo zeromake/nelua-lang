@@ -3,15 +3,16 @@ require 'string'
 local function assert_match(s: string, patt: string, res: overload(niltype,string,sequence(string)))
   local status, captures = string.matchview(s, patt, 1)
   ## if res.type.is_niltype then
-  assert(status == true and #captures == 1 and captures[1] == s)
+  assert(status == true and #captures == 1 and captures[1] == s, captures[1]..' != '..s)
   ## elseif res.type.is_string then
   assert(status == true and #captures == 1 and captures[1] == res)
   ## elseif res.type.is_sequence then
   assert(status == true)
   assert(#captures == #res)
+  ## local restype = res.type:implicit_deref_type()
   for i:isize=1,#captures do
-    local a, b = captures[i], res[i]
-    assert(a == b)
+    local a, b = captures[i], res[i - #[restype.is_oneindexing and 0 or 1]#]
+    assert(a == b, a..' != '.. b)
   end
   res:destroy()
   ## end

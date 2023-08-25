@@ -3,8 +3,8 @@ require 'string'
 require 'math'
 
 global path = @record{
-    _prefixLength: isize, -- \\?\ 的前缀略过
     _path: string,
+    _prefixLength: isize, -- \\?\ 的前缀略过
 }
 
 ## if ccinfo.is_windows then
@@ -18,13 +18,13 @@ global path.generic_separator: byte <comptime> = '/'_b
 function path:root_name_length(): isize
     if #self._path >= self._prefixLength + 2 then
 ## if ccinfo.is_windows then
-        local first = strchar.toupper(self._path[self._prefixLength + 1])
-        if first >= 'A'_b and first <= 'Z'_b and self._path[self._prefixLength + 2] == ':'_b then
+        local first = strchar.toupper(self._path[self._prefixLength])
+        if first >= 'A'_b and first <= 'Z'_b and self._path[self._prefixLength + 1] == ':'_b then
             return 2
         end
 ## else
-        local first = self._path[self._prefixLength + 1]
-        local second = self._path[self._prefixLength + 2]
+        local first = self._path[self._prefixLength]
+        local second = self._path[self._prefixLength + 1]
         if first == path.preferred_separator and second ~= path.preferred_separator then
             local pos = string.find(self._path, string.char(path.preferred_separator), 4)
             if pos == 0 then
@@ -60,17 +60,17 @@ function path:is_relative()
 end
 
 function path:root_name()
-    local start = self._prefixLength + 1
-    return (@path){0, string.subview(self._path, start, start + self:root_name_length() - 1)};
+    local start = self._prefixLength
+    return (@path){string.subview(self._path, start, start + self:root_name_length())};
 end
 
 function path:__tostring(): string <polymorphic>
-    return string.subview(self._path, self._prefixLength+1)
+    return self._path
 end
 
 function path:relative_path()
     local rootPathLen = self._prefixLength + self:root_name_length() + (self:has_root_directory() and 1 or 0);
-    return (@path){0, string.subview(self._path, math.min(rootPathLen + 1, #self._path + 1))};
+    return (@path){string.subview(self._path, math.min(rootPathLen, #self._path))};
 end
 
 function path:postprocess_path()
@@ -99,12 +99,15 @@ end
 
 function path.create(p: string)
     local s = (@path){
-        _prefixLength = 0,
         _path = p,
+        _prefixLength = 0,
     }
     s:postprocess_path()
     return s
 end
 
+function path.__convert(value: string)
+    return path.create(value)
+end
 
 return path

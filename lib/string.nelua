@@ -73,14 +73,15 @@ end
 -- Returns the internal numeric codes of the character at position `i`.
 function string.byte(s: string, i: facultative(isize)): byte
   ## if i.type.is_niltype then
-  local i: isize = 1
+  local i: isize = 0
   ## end
   -- TODO: j argument and multiple returns
   if unlikely(s.size == 0) then return 0 end
-  if unlikely(i < 0) then i = s.size + i + 1 end
+  if unlikely(i < 0) then i = s.size + i end
+  if unlikely(i < 0) then i = 0 end
   --TODO: return nil instead on failure
-  check(i >= 1 and (@usize)(i) <= s.size, 'index out of range')
-  return s.data[i-1]
+  check(i >= 0 and (@usize)(i) < s.size, 'index out of range')
+  return s.data[i]
 end
 
 --[[
@@ -91,21 +92,21 @@ In particular, the call `string.sub(s,1,j)` returns a prefix of `s` with length 
 and `string.sub(s, -i)` (for a positive `i`) returns a suffix of `s` with length `i`.
 ]]
 function string.sub(s: string, i: isize, j: facultative(isize)): string
-  ## if j.type.is_niltype then
-  local j: isize = -1
-  ## end
   local size: isize = (@isize)(s.size)
+  ## if j.type.is_niltype then
+  local j: isize = size
+  ## end
   if unlikely(size == 0) then return (@string){} end
-  if unlikely(i < 0) then i = size + i + 1 end
-  if unlikely(i <= 0) then i = 1 end
-  if unlikely(j < 0) then j = size + j + 1 end
+  if unlikely(i < 0) then i = size + i end
+  if unlikely(i < 0) then i = 0 end
+  if unlikely(j < 0) then j = size + j end
   if unlikely(j > size) then j = size end
-  if unlikely(i == 1 and j == size) then return string.copy(s) end
+  if unlikely(i == 0 and j == size) then return string.copy(s) end
   if unlikely(i > j) then return (@string){} end
-  local subsize: usize = (@usize)(j - i + 1)
+  local subsize: usize = (@usize)(j - i)
   if unlikely(subsize == 0) then return (@string){} end
   local ret: string = string.create(subsize)
-  memory.copy(&ret.data[0], &s.data[i-1], subsize)
+  memory.copy(&ret.data[0], &s.data[i], subsize)
   return ret
 end
 
@@ -122,20 +123,20 @@ The view string may not be zero terminated, thus you should never
 cast it to a `cstring` to use in C functions.
 ]]
 function string.subview(s: string, i: isize, j: facultative(isize)): string
-  ## if j.type.is_niltype then
-  local j: isize = -1
-  ## end
   local size: isize = (@isize)(s.size)
+  ## if j.type.is_niltype then
+  local j: isize = size
+  ## end
   if unlikely(size == 0) then return (@string){} end
-  if unlikely(i < 0) then i = size + i + 1 end
-  if unlikely(i <= 0) then i = 1 end
-  if unlikely(j < 0) then j = size + j + 1 end
+  if unlikely(i < 0) then i = size + i end
+  if unlikely(i < 0) then i = 0 end
+  if unlikely(j < 0) then j = size + j end
   if unlikely(j > size) then j = size end
-  if unlikely(i == 1 and j == size) then return s end
+  if unlikely(i == 0 and j == size) then return s end
   if unlikely(i > j) then return (@string){} end
-  local subsize: usize = (@usize)(j - i + 1)
+  local subsize: usize = (@usize)(j - i)
   if unlikely(subsize == 0) then return (@string){} end
-  return (@string){data=&s.data[i-1], size=subsize}
+  return (@string){data=&s.data[i], size=subsize}
 end
 
 --[[
@@ -308,8 +309,8 @@ Argument `i` must be an integer between 1 and the string size.
 Used when indexing elements with square brackets (`[]`).
 ]]
 function string.__atindex(s: string, i: usize): *byte <inline,nosideeffect>
-  check(i >= 1 and i <= s.size, 'index out of range')
-  return &s.data[i-1]
+  check(i >= 0 and i < s.size, 'index out of range')
+  return &s.data[i]
 end
 
 -- Return length of a string. Used by the length operator (`#`).
@@ -817,7 +818,7 @@ local function string_match(s: string, pattern: string, init: facultative(isize)
       end
       return true, captures
     else -- nothing captured, then capture whole match
-      captures[1] = ms.source:subview(startpos+1, endpos)
+      captures[1] = ms.source:subview(startpos, endpos)
       return true, captures
     end
   else -- no match
@@ -893,7 +894,7 @@ function string:startswith(s: string): boolean
   if #$self == 0 or #s > #$self then
     return false
   end
-  return string.subview(self, 1, #s) == s
+  return string.subview(self, 0, #s) == s
 end
 
 function string:endswith(s: string): boolean
@@ -903,7 +904,7 @@ function string:endswith(s: string): boolean
   if #$self == 0 or #s > #$self then
     return false
   end
-  return string.subview(self, #$self - #s + 1) == s
+  return string.subview(self, #$self - #s) == s
 end
 
 local strconv: type = require 'detail.strconv'

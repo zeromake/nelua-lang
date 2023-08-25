@@ -2482,7 +2482,7 @@ StringType.is_string = true
 StringType.is_stringy = true
 StringType.is_contiguous = true
 StringType.is_container = true
-StringType.is_oneindexing = true
+StringType.is_oneindexing = false
 
 function StringType:_init(name)
   self.codename = 'nlstring'

@@ -275,7 +275,7 @@ do -- tostring
   file = io.open('test_file.tmp', 'r')
   assert(file:isopen())
   local s: string = tostring(file)
-  assert(s:subview(1,6) == 'file (')
+  assert(s:subview(0,6) == 'file (')
   s:destroy()
   local file2 = file
   file:close()
