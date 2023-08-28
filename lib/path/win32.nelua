@@ -1,0 +1,31 @@
+local path = @record{}
+local path.win32 = @record{}
+
+local path.win32.delimiter <const,comptime> = ';'
+local path.win32.sep <const,comptime> = '\\'
+local path.win32.delimiter_b <const,comptime> = ';'_b
+local path.win32.sep_b <const,comptime> = '\\'_b
+
+function path.win32.join(...: varargs)
+    local sb: stringbuilder
+    local prev_sep = true
+    ## for i=1,select('#', ...) do
+    do
+        ## local argnode = select(i, ...)
+        ## local argtype = argnode.attr.type
+        ## if argtype.is_uint8 or argtype.is_int8 then
+        local s: string = string.char(#[argnode]#)
+        ## else
+        local s: string = #[argnode]#
+        ## end
+        if not prev_sep and not s:startswith(path.win32.sep) then
+            sb:writebyte(path.win32.sep_b)
+        end
+        sb:write(s)
+        prev_sep = s:endswith(path.win32.sep)
+    end
+    ## end
+    return sb:promote()
+end
+
+return path.win32

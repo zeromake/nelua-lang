@@ -1,5 +1,8 @@
 require 'string'
+require 'vector'
 require 'allocators.default'
+require 'C.stdlib'
+require 'path'
 
 ## if ccinfo.is_windows then
 local WIN32_FIND_DATAA: type <cimport,cinclude'<windows.h>',cincomplete> = @record{
@@ -9,16 +12,19 @@ local function FindFirstFileA(lpFileName: cstring <const>, hData: *WIN32_FIND_DA
 local function FindNextFileA(hFind: pointer, hData: *WIN32_FIND_DATAA): cint <cimport,cinclude'<fileapi.h>'> end
 local function GetFullPathNameA(
     lpFileName: cstring <const>,
-    nBufferLength: clong,
+    nBufferLength: cushort,
     lpBuffer: cstring,
     lpFilePart: *cstring
-): clong <cimport,cinclude'<fileapi.h>'> end
+): cushort <cimport,cinclude'<fileapi.h>'> end
 local function FindClose(hFind: pointer): cchar <cimport,cinclude'<fileapi.h>'> end
 local fsDirectoryIterator: type = @record{
     dir: pointer,
     data: WIN32_FIND_DATAA,
     first: boolean,
 }
+
+local function GetCurrentDirectoryA(nBufferLength: cushort, lpBuffer: cstring): cushort <cimport,cinclude'<windows.h>'> end
+local function SetCurrentDirectoryA(lpPathName: cstring <const>): cchar <cimport,cinclude'<windows.h>'> end
 
 ## else
 local dirent: type <cimport,cinclude'<dirent.h>',cincomplete,ctypedef'dirent'> = @record{
@@ -30,8 +36,10 @@ local function closedir(dir: pointer): void <cimport,cinclude'<dirent.h>'> end
 local fsDirectoryIterator: type = @record{
     dir: pointer,
 }
+local function chdir(path: cstring <const>): int <cimport,cinclude'<dirent.h>'> end
+local function get_current_dir_name(): cstring <cimport,cinclude'<dirent.h>'> end
 ## end
-global filesystem = @record{}
+global fs = @record{}
 
 function fsDirectoryIterator:__next(index: integer): (boolean, integer, string)
 ## if ccinfo.is_windows then
@@ -74,7 +82,15 @@ function fsDirectoryIterator:__close()
 ## end
 end
 
-function filesystem.directory(path: string): (fsDirectoryIterator, string, integer)
+function fsDirectoryIterator:vector(): vector(string)
+    local result: vector(string)
+    for _, item in pairs(self) do
+        result:push(item)
+    end
+    return result
+end
+
+function fs.dir(path: string): (fsDirectoryIterator, string, integer)
     local iter = (@fsDirectoryIterator){}
 ## if ccinfo.is_windows then
     if #path > 255 then
@@ -98,4 +114,50 @@ function filesystem.directory(path: string): (fsDirectoryIterator, string, integ
     return iter, (@string){}, 0
 end
 
-return filesystem
+## if ccinfo.is_windows then
+function filesystem.current_path(path: facultative(string))
+## if path.type.is_niltype then
+    local nBufferLength = GetCurrentDirectoryA(0, nilptr);
+    local path = (@*[0]cchar)(default_allocator:xalloc0((nBufferLength + 1)))
+    GetCurrentDirectoryA(nBufferLength, path)
+    local result = string.copy(path)
+    default_allocator:dealloc(path)
+    return result
+## else
+    return SetCurrentDirectoryA(path) ~= 0
+## end
+end
+## else
+function fs.current_path(path: facultative(string))
+## if path.type.is_niltype then
+    local path = get_current_dir_name();
+    local result = string.copy(path)
+    C.free(path)
+    return result
+## else
+    return chdir(path) ~= 0
+## end
+end
+## end
+
+function fs.absolute(path: string)
+## if ccinfo.is_windows then
+    local size = GetFullPathNameA(path, 0, nilptr, nilptr)
+    local ppath = (@*[0]cchar)(default_allocator:xalloc0(size + 1))
+    GetFullPathNameA(path, size, ppath, nilptr)
+    local result = string.copy(ppath)
+    default_allocator:dealloc(ppath)
+    return result
+## else
+    local base = fs.current_path()
+    if path == "" or path == "." then
+        return base
+    end
+    if path[0] == '/'_b then
+        return path
+    end
+    return base .. "/".. path
+## end
+end
+
+return fs

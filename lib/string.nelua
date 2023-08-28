@@ -563,20 +563,20 @@ A value of true as a fourth, optional argument plain turns off the pattern match
 ]]
 function string.find(s: string, pattern: string, init: facultative(isize), plain: facultative(boolean)): (isize, isize)
   ## if init.type.is_niltype then
-  local init: isize = 1
+  local init: isize = 0
   ## else
-  if init < 0 then init = (@isize)(s.size) + init + 1 end
-  if init <= 0 then init = 1 end
+  if init < 0 then init = (@isize)(s.size) + init end
+  if init < 0 then init = 0 end
   ## end
   ## if plain.type.is_niltype then
   local plain: boolean = false
   ## end
   local ms: StrPatt = StrPatt.create(s, pattern, plain)
-  local startpos: isize, endpos: isize = ms:match(init-1)
+  local startpos: isize, endpos: isize = ms:match(init)
   if endpos ~= -1 then -- matched
-    return startpos+1, endpos
+    return startpos, endpos
   else -- no match
-    return 0, 0
+    return -1, -1
   end
 end
 

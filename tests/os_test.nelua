@@ -24,11 +24,11 @@ do -- os.date
   date:destroy()
 
   date = os.date('%Y/%m/%d %H:%M:%S')
-  assert(date:find('^[0-9]+/[0-9]+/[0-9]+ [0-9]+:[0-9]+:[0-9]+$') > 0)
+  assert(date:find('^[0-9]+/[0-9]+/[0-9]+ [0-9]+:[0-9]+:[0-9]+$') ~= -1)
   date:destroy()
 
   date = os.date('!%c', 0)
-  assert(date:find('00:00:00') > 0)
+  assert(date:find('00:00:00') ~= -1)
   date:destroy()
 
   date = os.date('')

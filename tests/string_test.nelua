@@ -323,23 +323,23 @@ end
 do -- string.find
   local s: string = 'hello world'
   local b, e
-  b, e = s:find('h', 1, true) assert(b == 1 and e == 1)
-  b, e = s:find('he', 1, true) assert(b == 1 and e == 2)
-  b, e = s:find('ld', 1, true) assert(b == 10 and e == 11)
-  b, e = s:find('heo', 1, true) assert(b == 0 and e == 0)
-  b, e = s:find('hel', 1, true) assert(b == 1 and e == 3)
-  b, e = s:find('d', 1, true) assert(b == 11 and e == 11)
-  b, e = s:find('h', -11, true) assert(b == 1 and e == 1)
-  b, e = s:find('h', -10, true) assert(b == 0 and e == 0)
-  b, e = s:find('', 1, true) assert(b == 1 and e == 0)
-  b, e = s:find('a', 1, true) assert(b == 0 and e == 0)
+  b, e = s:find('h', 0, true) assert(b == 0 and e == 1)
+  b, e = s:find('he', 0, true) assert(b == 0 and e == 2)
+  b, e = s:find('ld', 0, true) assert(b == 9 and e == 11)
+  b, e = s:find('heo', 0, true) assert(b == -1 and e == -1)
+  b, e = s:find('hel', 0, true) assert(b == 0 and e == 3)
+  b, e = s:find('d', 0, true) assert(b == 10 and e == 11)
+  b, e = s:find('h', -11, true) assert(b == 0 and e == 1)
+  b, e = s:find('h', -10, true) assert(b == -1 and e == -1)
+  b, e = s:find('', 0, true) assert(b == 0 and e == 0)
+  b, e = s:find('a', 0, true) assert(b == -1 and e == -1)
   s = ''
-  b, e = s:find('', 1, true) assert(b == 1 and e == 0)
-  b, e = s:find('a', 1, true) assert(b == 0 and e == 0)
+  b, e = s:find('', 0, true) assert(b == 0 and e == 0)
+  b, e = s:find('a', 0, true) assert(b == -1 and e == -1)
 
-  b, e = string.find('abc','^abc$') assert(b == 1 and e == 3)
-  b, e = string.find('abc','%l+') assert(b == 1 and e == 3)
-  b, e = string.find('abc','%l+', 2) assert(b == 2 and e == 3)
+  b, e = string.find('abc','^abc$') assert(b == 0 and e == 3)
+  b, e = string.find('abc','%l+') assert(b == 0 and e == 3)
+  b, e = string.find('abc','%l+', 1) assert(b == 1 and e == 3)
 end
 
 do -- string.match

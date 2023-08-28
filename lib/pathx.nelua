@@ -8,11 +8,11 @@ global path = @record{
 }
 
 ## if ccinfo.is_windows then
-global path.preferred_separator: byte <comptime> = '\\'_b
+global path.sep: byte <comptime> = '\\'_b
 ## else
-global path.preferred_separator: byte <comptime> = '/'_b
+global path.sep: byte <comptime> = '/'_b
 ## end
-global path.generic_separator: byte <comptime> = '/'_b
+global path.generic_sep: byte <comptime> = '/'_b
 
 
 function path:root_name_length(): isize

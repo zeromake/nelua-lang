@@ -103,9 +103,9 @@ compilers_flags.gcc = tabler.updatecopy(compilers_flags.cc, {
   cflags_shared_lib_windows_msc = '-shared',
   cflags_shared_lib_windows_gcc = '-shared -Wl,--out-implib,"$(binfile).a"',
   cflags_assembly = "-S -fverbose-asm -g0",
-  cmd_compile = '$(cc) -x c "$(cfile)" -x none $(cflags) -o "$(binfile)"',
-  cmd_info = '$(cc) -E -x c "$(cfile)" -x none $(cflags)',
-  cmd_defines = '$(cc) -E -dM -x c "$(cfile)" -x none $(cflags)',
+  cmd_compile = '$(cc) -x c "$(cfile)" $(cflags) -o "$(binfile)"',
+  cmd_info = '$(cc) -E -x c "$(cfile)" $(cflags)',
+  cmd_defines = '$(cc) -E -dM -x c "$(cfile)" $(cflags)',
 })
 -- Emscripten CC
 compilers_flags.emcc = tabler.updatecopy(compilers_flags.gcc, {
@@ -127,9 +127,9 @@ compilers_flags.c2m = tabler.updatecopy(compilers_flags.cc, {
 })
 -- GCC (C++)
 compilers_flags['g++'] = tabler.updatecopy(compilers_flags.gcc, {
-  cmd_compile = '$(cc) -x c++ "$(cfile)" -x none $(cflags) -o "$(binfile)"',
-  cmd_info = '$(cc) -E -x c++ "$(cfile)" -x none $(cflags)',
-  cmd_defines = '$(cc) -E -dM -x c++ "$(cfile)" -x none $(cflags)',
+  cmd_compile = '$(cc) -x c++ "$(cfile)" $(cflags) -o "$(binfile)"',
+  cmd_info = '$(cc) -E -x c++ "$(cfile)" $(cflags)',
+  cmd_defines = '$(cc) -E -dM -x c++ "$(cfile)" $(cflags)',
   ext = '.cpp',
 })
 -- Clang (C++)

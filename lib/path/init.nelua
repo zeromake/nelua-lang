@@ -1,0 +1,16 @@
+
+global path = @record{}
+global path.win32 = require 'path.win32'
+global path.unix = require 'path.unix'
+
+
+## if ccinfo.is_windows then
+global path.delimiter <const,comptime> = path.win32.delimiter
+global path.sep <const,comptime> = path.win32.sep
+global path.join = path.win32.join
+## else
+global path.delimiter <const,comptime> = path.unix.delimiter
+global path.sep <const,comptime> = path.unix.sep
+global path.join = path.unix.join
+## end
+return path

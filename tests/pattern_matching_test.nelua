@@ -149,16 +149,16 @@ do -- test pattern matching syntax
   assert_match('1a', '1%f[%l]%l')
   assert_match('12345abcdef', '%d+%f[%l]%l+')
   assert_match('12345abcdef', '%d+%f[^%d]%l+')
-  assert(string.find("a", "%f[a]") == 1)
-  assert(string.find("a", "%f[^%z]") == 1)
-  assert(string.find("a", "%f[^%l]") == 2)
-  assert(string.find("aba", "%f[a%z]") == 3)
-  assert(string.find("aba", "%f[%z]") == 4)
-  assert(string.find("aba", "%f[%l%z]") == 0)
-  assert(string.find("aba", "%f[^%l%z]") == 0)
+  assert(string.find("a", "%f[a]") == 0)
+  assert(string.find("a", "%f[^%z]") == 0)
+  assert(string.find("a", "%f[^%l]") == 1)
+  assert(string.find("aba", "%f[a%z]") == 2)
+  assert(string.find("aba", "%f[%z]") == 3)
+  assert(string.find("aba", "%f[%l%z]") == -1)
+  assert(string.find("aba", "%f[^%l%z]") == -1)
   do
     local i, e = string.find(" alo aalo allo", "%f[%S].-%f[%s].-%f[%S]")
-    assert(i == 2 and e == 5)
+    assert(i == 1 and e == 5)
   end
 
   -- captures

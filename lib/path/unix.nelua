@@ -1,0 +1,101 @@
+require 'string'
+require 'C.stdlib'
+
+local path = @record{}
+local path.unix = @record{}
+
+local path.unix.delimiter <const,comptime> = ':'
+local path.unix.sep <const,comptime> = '/'
+local path.unix.delimiter_b <const,comptime> = ':'_b
+local path.unix.sep_b <const,comptime> = '/'_b
+
+## if ccinfo.is_windows then
+local function chdir(path: cstring <const>): cint <cimport'_chdir',cinclude'<dirent.h>'> end
+local function getcwd(buff: cstring, size: cint): cstring <cimport'_getcwd',cinclude'<dirent.h>'> end
+## else
+local function chdir(path: cstring <const>): cint <cimport,cinclude'<dirent.h>'> end
+local function getcwd(buff: cstring, size: cint): cstring <cimport,cinclude'<dirent.h>'> end
+## end
+
+function path.unix.join(...: varargs)
+    local sb: stringbuilder
+    local prev_sep = true
+    ## for i=1,select('#', ...) do
+    do
+        ## local argnode = select(i, ...)
+        ## local argtype = argnode.attr.type
+        ## if argtype.is_uint8 or argtype.is_int8 then
+        local s: string = string.char(#[argnode]#)
+        ## else
+        local s: string = #[argnode]#
+        ## end
+        if not prev_sep and not s:startswith(path.unix.sep) then
+            sb:writebyte(path.unix.sep_b)
+        end
+        sb:write(s)
+        prev_sep = s:endswith(path.unix.sep)
+    end
+    ## end
+    return sb:promote()
+end
+
+function path.unix.is_absolute(s: string)
+    return s:startswith(path.unix.sep)
+end
+
+function path.unix.current_path(s: facultative(string))
+## if s.type.is_niltype then
+    local s = getcwd(nilptr, 0);
+    local result = string.copy(s)
+    C.free(s)
+    return result
+## else
+    return chdir(s) ~= 0
+## end
+end
+
+function path.unix.absolute(s: string)
+    if path.unix.is_absolute(s) then
+        return s
+    end
+    return path.unix.join(path.unix.current_path(), s)
+end
+
+function path.unix.split(s: string)
+    local sep_index = -1;
+    local ext_index = -1;
+    for i = #s -1, 0, -1 do
+        if s[i] == path.unix.sep_b then
+            sep_index = i
+            break 
+        end
+        if s[i] == '.'_b and ext_index == -1 then
+            ext_index = i
+        end
+    end
+    if sep_index >= 0 and ext_index >= 0 then
+        return s:sub(0, sep_index+1), s:sub(sep_index+1, ext_index), s:sub(ext_index)
+    end
+    if sep_index >= 0 then
+        return s:sub(0, sep_index+1), s:sub(sep_index+1), (@string){}
+    end
+    return (@string){}, s, (@string){}
+end
+
+function path.unix.dirname(s: string)
+    local dir = path.unix.split(s)
+    return dir
+end
+
+function path.unix.basename(s: string, e: facultative(boolean))
+    local dir, basename, ext = path.unix.split(s)
+## if e.type.is_niltype then
+    local e = true
+## end
+    if e then
+        return basename..ext
+    end
+    return basename
+end
+
+return path.unix
