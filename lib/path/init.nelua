@@ -1,16 +1,196 @@
+require 'string'
+require 'C.stdlib'
 
-global path = @record{}
-global path.win32 = require 'path.win32'
-global path.unix = require 'path.unix'
+local path = @record{}
 
+--------------------------- posix impl ------------------------
+
+local path.posix = @record{}
+
+local path.posix.delimiter <const,comptime> = ':'
+local path.posix.sep <const,comptime> = '/'
+local path.posix.delimiter_b <const,comptime> = ':'_b
+local path.posix.sep_b <const,comptime> = '/'_b
 
 ## if ccinfo.is_windows then
-global path.delimiter <const,comptime> = path.win32.delimiter
-global path.sep <const,comptime> = path.win32.sep
-global path.join = path.win32.join
+local function chdir(path: cstring <const>): cint <cimport'_chdir',cinclude'<dirent.h>'> end
+local function getcwd(buff: cstring, size: cint): cstring <cimport'_getcwd',cinclude'<dirent.h>'> end
 ## else
-global path.delimiter <const,comptime> = path.unix.delimiter
-global path.sep <const,comptime> = path.unix.sep
-global path.join = path.unix.join
+local function chdir(path: cstring <const>): cint <cimport,cinclude'<unistd.h>'> end
+local function getcwd(buff: cstring, size: cint): cstring <cimport,cinclude'<unistd.h>'> end
+## end
+
+function path.posix.join(...: varargs)
+    local sb: stringbuilder
+    local prev_sep = true
+    ## for i=1,select('#', ...) do
+    do
+        ## local argnode = select(i, ...)
+        ## local argtype = argnode.attr.type
+        ## if argtype.is_uint8 or argtype.is_int8 then
+        local s: string = string.char(#[argnode]#)
+        ## else
+        local s: string = #[argnode]#
+        ## end
+        if not prev_sep and not s:startswith(path.posix.sep) then
+            sb:writebyte(path.posix.sep_b)
+        end
+        sb:write(s)
+        prev_sep = s:endswith(path.posix.sep)
+    end
+    ## end
+    return sb:promote()
+end
+
+function path.posix.is_absolute(s: string)
+    return s:startswith(path.posix.sep)
+end
+
+function path.posix.current_path(s: facultative(string))
+## if s.type.is_niltype then
+    local s = getcwd(nilptr, 0);
+    local result = string.copy(s)
+    C.free(s)
+
+## if ccinfo.is_windows then
+    result = result:gsub('\\', '/')
+## end
+    return result
+## else
+    return chdir(s) ~= 0
+## end
+end
+
+function path.posix.absolute(s: string)
+    if path.posix.is_absolute(s) then
+        return s
+    end
+    return path.posix.join(path.posix.current_path(), s)
+end
+
+local function path_split(s: string, sep: byte)
+    local sep_index = -1;
+    local ext_index = -1;
+    for i = #s -1, 0, -1 do
+        if s[i] == sep then
+            sep_index = i
+            break 
+        end
+        if s[i] == '.'_b and ext_index == -1 then
+            ext_index = i
+        end
+    end
+    if sep_index >= 0 and ext_index >= 0 then
+        return s:sub(0, sep_index+1), s:sub(sep_index+1, ext_index), s:sub(ext_index)
+    end
+    if sep_index >= 0 then
+        return s:sub(0, sep_index+1), s:sub(sep_index+1), (@string){}
+    end
+    return (@string){}, s, (@string){}
+end
+
+function path.posix.dirname(s: string)
+    local dir = path_split(s, path.posix.sep_b)
+    return dir
+end
+
+function path.posix.basename(s: string, e: facultative(boolean))
+    local dir, basename, ext = path_split(s, path.posix.sep_b)
+## if e.type.is_niltype then
+    local e = true
+## end
+    if e then
+        return basename..ext
+    end
+    return basename
+end
+
+--------------------------- win32 impl ------------------------
+
+local path.win32 = @record{}
+local path.win32.delimiter <const,comptime> = ';'
+local path.win32.sep <const,comptime> = '\\'
+local path.win32.delimiter_b <const,comptime> = ';'_b
+local path.win32.sep_b <const,comptime> = '\\'_b
+
+function path.win32.join(...: varargs)
+    local sb: stringbuilder
+    local prev_sep = true
+    ## for i=1,select('#', ...) do
+    do
+        ## local argnode = select(i, ...)
+        ## local argtype = argnode.attr.type
+        ## if argtype.is_uint8 or argtype.is_int8 then
+        local s: string = string.char(#[argnode]#)
+        ## else
+        local s: string = #[argnode]#
+        ## end
+        if not prev_sep and not s:startswith(path.win32.sep) then
+            sb:writebyte(path.win32.sep_b)
+        end
+        sb:write(s)
+        prev_sep = s:endswith(path.win32.sep)
+    end
+    ## end
+    return sb:promote()
+end
+
+function path.win32.is_absolute(s: string)
+    return #s > 2 and ((s[0] >= 'A'_b and s[1] <= 'Z'_b) or (s[0] >= 'a'_b and s[1] <= 'z'_b)) and s[1] == ':'
+end
+
+function path.win32.current_path(s: facultative(string))
+## if s.type.is_niltype then
+    local s = getcwd(nilptr, 0);
+    local result = string.copy(s)
+    C.free(s)
+## if not ccinfo.is_windows then
+    result = result:gsub('/', '\\')
+## end
+    return result
+## else
+    return chdir(s) ~= 0
+## end
+end
+
+function path.win32.absolute(s: string)
+    if path.win32.is_absolute(s) then
+        return s
+    end
+    return path.win32.join(path.win32.current_path(), s)
+end
+
+function path.win32.dirname(s: string)
+    local dir = path_split(s, path.win32.sep_b)
+    return dir
+end
+
+function path.win32.basename(s: string, e: facultative(boolean))
+    local dir, basename, ext = path_split(s, path.win32.sep_b)
+## if e.type.is_niltype then
+    local e = true
+## end
+    if e then
+        return basename..ext
+    end
+    return basename
+end
+
+## if ccinfo.is_windows then
+local path.delimiter <const,comptime> = path.win32.delimiter
+local path.sep <const,comptime> = path.win32.sep
+local path.join = path.win32.join
+local path.current_path = path.win32.current_path
+local path.is_absolute = path.win32.is_absolute
+local path.dirname = path.win32.dirname
+local path.basename = path.win32.basename
+## else
+local path.delimiter <const,comptime> = path.posix.delimiter
+local path.sep <const,comptime> = path.posix.sep
+local path.join = path.posix.join
+local path.current_path = path.posix.current_path
+local path.is_absolute = path.posix.is_absolute
+local path.dirname = path.posix.dirname
+local path.basename = path.posix.basename
 ## end
 return path

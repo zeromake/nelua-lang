@@ -1,0 +1,6 @@
+require 'string'
+require 'C.stdlib'
+
+local path = require 'path'
+
+return path.posix
