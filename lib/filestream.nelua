@@ -87,11 +87,20 @@ function filestream.open(filename: string, mode: facultative(string)) : (filestr
     if memory.scan('rwa'_cstring, mode.data[0], 3) == nilptr then return false end
     local pos: usize = 1
     if mode.data[pos] == '+'_b then pos = pos + 1 end
+## if ccinfo.is_windows then
+    if mode.data[pos] == 't'_b then pos = pos + 1 end
+## end
     if mode.data[pos] == 'b'_b then pos = pos + 1 end
     return mode.data[pos] == 0
   end
   assert(checkmode(mode), 'invalid mode')
   ## end
+  -- windows default use rb wb
+## if ccinfo.is_windows then
+  if mode:find('b') == -1 and mode:find('t') == -1 then
+    mode = mode..'b'
+  end
+## end
   local fp: *FILE = fopen(filename, mode)
   if not fp then
     return filestream{}, geterrno()
