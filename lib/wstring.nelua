@@ -1,0 +1,98 @@
+require 'allocators.default'
+require 'string'
+
+## if ccinfo.is_windows then
+local wstring_char_t: type = cwchar_t
+local function _mbstowcs_l(
+    wcstr: *cwchar_t,
+    mbstr: cstring <const>,
+    count: csize,
+    locale: pointer
+): csize <cimport,cinclude'<stdlib.h>'> end
+local function _wcstombs_l(
+    mbstr: cstring,
+    wcstr: *cwchar_t <const>,
+    count: csize,
+    locale: pointer
+): csize <cimport,cinclude'<stdlib.h>'> end
+local function wcslen(str: *cwchar_t <const>): csize <cimport,cinclude'<string.h>'> end
+local function _create_locale(category: cint, locale: cstring): pointer <cimport,cinclude'<locale.h>'> end
+local __global_locale = _create_locale(0, '.65001')
+## end
+
+global wstring = @record{
+  data: *[0]wstring_char_t,
+  size: usize,
+}
+
+function wstring.create(size: usize): wstring
+  local ws: wstring = {
+    data = (@*[0]wstring_char_t)(default_allocator:xalloc((size+1) * #wstring_char_t)),
+    size = size,
+  }
+  ws.data[size] = 0
+  return ws
+end
+
+function wstring:destroy(): void
+  if unlikely(self.size == 0) then return end
+  default_allocator:dealloc(self.data)
+  self.data = nilptr
+  self.size = 0
+end
+
+function wstring:__close(): void
+  self:destroy()
+end
+
+function wstring.copy(s: wstring): wstring
+  local clone: wstring
+  if unlikely(s.size == 0) then return clone end
+  clone.data = (@*[0]wstring_char_t)(default_allocator:xalloc((s.size+1) * #wstring_char_t))
+  memory.copy(clone.data, s.data, s.size * #wstring_char_t)
+  clone.data[s.size] = 0
+  clone.size = s.size
+  return clone
+end
+
+
+local wstring_convertible_concept: type = #[concept(function(x)
+    if x.type.is_pointer and x.type.subtype == primtypes.wchar_t then
+        return true
+    elseif x.type.is_string then
+        return true
+    else
+        return false
+    end
+end)]#
+
+function wstring.__convert(s: string)
+## if s.type.is_string then
+    local size = _mbstowcs_l(nilptr, s.data, 0, __global_locale)
+    assert(size > 0, 'utf8 convert ucs2 error')
+    local ws = wstring.create(size)
+    _mbstowcs_l((@*[0]cwchar_t)(ws.data), s.data, size, __global_locale)
+    return ws
+## else
+    local size = wcslen(s)
+    local clone: wstring
+    clone.data = (@*[0]wstring_char_t)(default_allocator:xalloc((size+1) * #wstring_char_t))
+    memory.copy(clone.data, s, size * #wstring_char_t)
+    clone.data[size] = 0
+    clone.size = size
+    return clone
+## end
+end
+
+function wstring:__tostring(): string
+    local size = _wcstombs_l(nilptr, (@*[0]cwchar_t)(self.data), 0, __global_locale)
+    if size == 0 then
+      return (@string){}
+    end
+    assert(size > 0, 'ucs2 convert utf8 error')
+    local s = string.create(size)
+    _wcstombs_l(s, (@*[0]cwchar_t)(self.data), size, __global_locale)
+    return s
+end
+
+return wstring

@@ -1,4 +1,5 @@
 require 'string'
+require 'vector'
 require 'C.stdlib'
 
 local path = @record{}
@@ -13,12 +14,28 @@ local path.posix.delimiter_b <const,comptime> = ':'_b
 local path.posix.sep_b <const,comptime> = '/'_b
 
 ## if ccinfo.is_windows then
-local function chdir(path: cstring <const>): cint <cimport'_chdir',cinclude'<dirent.h>'> end
-local function getcwd(buff: cstring, size: cint): cstring <cimport'_getcwd',cinclude'<dirent.h>'> end
+local function chdir(path: cstring <const>): cint <cimport'_chdir',cinclude'<direct.h>'> end
+local function getcwd(buff: cstring, size: cint): cstring <cimport'_getcwd',cinclude'<direct.h>'> end
 ## else
 local function chdir(path: cstring <const>): cint <cimport,cinclude'<unistd.h>'> end
 local function getcwd(buff: cstring, size: cint): cstring <cimport,cinclude'<unistd.h>'> end
 ## end
+
+function path.posix.translate(s: string)
+    local sb: stringbuilder
+    local prev: byte = 0
+    for i = 0, <#s do
+        local c: byte = s[i]
+        if c == '\\'_b then
+            c = path.posix.sep_b
+        end
+        if prev == c and c == path.posix.sep_b then
+            continue
+        end
+        sb:writebyte(c)
+    end
+    return sb:promote()
+end
 
 function path.posix.join(...: varargs)
     local sb: stringbuilder
@@ -32,11 +49,13 @@ function path.posix.join(...: varargs)
         ## else
         local s: string = #[argnode]#
         ## end
-        if not prev_sep and not s:startswith(path.posix.sep) then
-            sb:writebyte(path.posix.sep_b)
+        if #s > 0 then
+            if not prev_sep and not s:startswith(path.posix.sep) then
+                sb:writebyte(path.posix.sep_b)
+            end
+            sb:write(s)
+            prev_sep = s:endswith(path.posix.sep)
         end
-        sb:write(s)
-        prev_sep = s:endswith(path.posix.sep)
     end
     ## end
     return sb:promote()
@@ -74,7 +93,7 @@ local function path_split(s: string, sep: byte)
     for i = #s -1, 0, -1 do
         if s[i] == sep then
             sep_index = i
-            break 
+            break
         end
         if s[i] == '.'_b and ext_index == -1 then
             ext_index = i
@@ -105,6 +124,61 @@ function path.posix.basename(s: string, e: facultative(boolean))
     return basename
 end
 
+
+function path.posix.extname(s: string)
+    local _, _, ext = path_split(s, path.posix.sep_b)
+    return ext
+end
+
+function path.posix.normalize(s: string)
+    local sb: stringbuilder
+    local prev: byte = 0
+    local count: usize = 0
+    local prev_size: usize = 0
+    sb:prepare(#s)
+    for i=0,<#s do
+        local c = s[i]
+        if c == '\\'_b then
+            c = path.posix.sep_b
+        end
+        if prev == c and c == path.posix.sep_b then
+            continue
+        end
+        prev = c
+        local is_latest = i == #s-1
+        if c == path.posix.sep_b or is_latest then
+            local ss = s:subview(i - count, i)..string.char(c)
+            local is_prev = ss == '..' or ss == '../'
+            local is_curr = ss == '.' or ss == './'
+            if is_prev then
+                sb:rollback(#sb - prev_size)
+            end
+            if not is_prev and not is_curr then
+                local _prev_size = #sb
+                if #ss > 0 then
+                    sb:write(ss)
+                end
+                if prev_size == 0 and count == 0 then
+                    _prev_size = #sb
+                end
+                prev_size = _prev_size
+            end
+            count = 0
+            continue
+        end
+        count = count + 1
+    end
+    return sb:promote()
+end
+
+function path.posix.resolve(...: varargs)
+    local p = path.posix.normalize(path.posix.join(...))
+    if path.posix.is_absolute(p) then
+        return p
+    end
+    return path.posix.absolute(p)
+end
+
 --------------------------- win32 impl ------------------------
 
 local path.win32 = @record{}
@@ -112,6 +186,22 @@ local path.win32.delimiter <const,comptime> = ';'
 local path.win32.sep <const,comptime> = '\\'
 local path.win32.delimiter_b <const,comptime> = ';'_b
 local path.win32.sep_b <const,comptime> = '\\'_b
+
+function path.win32.translate(s: string)
+    local sb: stringbuilder
+    local prev: byte = 0
+    for i = 0, <#s do
+        local c: byte = s[i]
+        if c == '/'_b then
+            c = path.win32.sep_b
+        end
+        if prev == c and c == path.win32.sep_b then
+            continue
+        end
+        sb:writebyte(c)
+    end
+    return sb:promote()
+end
 
 function path.win32.join(...: varargs)
     local sb: stringbuilder
@@ -125,18 +215,20 @@ function path.win32.join(...: varargs)
         ## else
         local s: string = #[argnode]#
         ## end
-        if not prev_sep and not s:startswith(path.win32.sep) then
-            sb:writebyte(path.win32.sep_b)
+        if #s > 0 then
+            if not prev_sep and not s:startswith(path.win32.sep) then
+                sb:writebyte(path.win32.sep_b)
+            end
+            sb:write(s)
+            prev_sep = s:endswith(path.win32.sep)
         end
-        sb:write(s)
-        prev_sep = s:endswith(path.win32.sep)
     end
     ## end
     return sb:promote()
 end
 
 function path.win32.is_absolute(s: string)
-    return #s > 2 and ((s[0] >= 'A'_b and s[1] <= 'Z'_b) or (s[0] >= 'a'_b and s[1] <= 'z'_b)) and s[1] == ':'
+    return #s > 2 and ((s[0] >= 'A'_b and s[0] <= 'Z'_b) or (s[0] >= 'a'_b and s[0] <= 'z'_b)) and s[1] == ':'_b
 end
 
 function path.win32.current_path(s: facultative(string))
@@ -154,8 +246,15 @@ function path.win32.current_path(s: facultative(string))
 end
 
 function path.win32.absolute(s: string)
+    if #s == 0 then
+        return path.win32.current_path()
+    end
     if path.win32.is_absolute(s) then
         return s
+    end
+    if s[0] == path.win32.sep_b then
+        local current_path = path.win32.current_path()
+        return path.win32.join(current_path:sub(0, 2), s)
     end
     return path.win32.join(path.win32.current_path(), s)
 end
@@ -176,21 +275,85 @@ function path.win32.basename(s: string, e: facultative(boolean))
     return basename
 end
 
+function path.win32.extname(s: string)
+    local _, _, ext = path_split(s, path.win32.sep_b)
+    return ext
+end
+
+function path.win32.normalize(s: string)
+    local sb: stringbuilder
+    local prev: byte = 0
+    local count: usize = 0
+    local prev_size: usize = 0
+    sb:prepare(#s)
+    for i=0,<#s do
+        local c = s[i]
+        if c == path.posix.sep_b then
+            c = path.win32.sep_b
+        end
+        if prev == c and c == path.win32.sep_b then
+            continue
+        end
+        prev = c
+        local is_latest = i == #s-1
+        if c == path.win32.sep_b or is_latest then
+            local ss = s:subview(i - count, i)..string.char(c)
+            local is_prev = ss == '..' or ss == '..\\'
+            local is_curr = ss == '.' or ss == '.\\'
+            if is_prev then
+                sb:rollback(#sb - prev_size)
+            end
+            if not is_prev and not is_curr then
+                local _prev_size = #sb
+                if #ss > 0 then
+                    sb:write(ss)
+                end
+                if prev_size == 0 and path.win32.is_absolute(ss) then
+                    _prev_size = #sb
+                end
+                prev_size = _prev_size
+            end
+            count = 0
+            continue
+        end
+        count = count + 1
+    end
+    return sb:promote()
+end
+
+function path.win32.resolve(...: varargs)
+    local p = path.win32.normalize(path.win32.join(...))
+    if path.win32.is_absolute(p) then
+        return p
+    end
+    return path.win32.absolute(p)
+end
+
 ## if ccinfo.is_windows then
 local path.delimiter <const,comptime> = path.win32.delimiter
 local path.sep <const,comptime> = path.win32.sep
+local path.translate = path.win32.translate
 local path.join = path.win32.join
 local path.current_path = path.win32.current_path
 local path.is_absolute = path.win32.is_absolute
+local path.absolute = path.win32.absolute
 local path.dirname = path.win32.dirname
 local path.basename = path.win32.basename
+local path.extname = path.win32.extname
+local path.normalize = path.win32.normalize
+local path.resolve = path.win32.resolve
 ## else
 local path.delimiter <const,comptime> = path.posix.delimiter
 local path.sep <const,comptime> = path.posix.sep
+local path.translate = path.posix.translate
 local path.join = path.posix.join
 local path.current_path = path.posix.current_path
 local path.is_absolute = path.posix.is_absolute
+local path.absolute = path.posix.absolute
 local path.dirname = path.posix.dirname
 local path.basename = path.posix.basename
+local path.extname = path.posix.extname
+local path.normalize = path.posix.normalize
+local path.resolve = path.posix.resolve
 ## end
 return path
