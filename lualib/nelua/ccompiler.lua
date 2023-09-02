@@ -329,12 +329,16 @@ local function detect_output_extension(outfile, ccinfo)
       return '.so'
     end
   else -- binary executable
-    if ccinfo.is_wasm then
-      if ccinfo.is_emscripten and not outfile:find('%.wasm$') and not config.runner then
-        return '.html', true
-      else
+    if ccinfo.is_emscripten then
+      if outfile:find('%.js$') then
+        return '.js'
+      elseif outfile:find('%.wasm$') then
         return '.wasm', true
+      elseif not config.runner then
+        return '.html', true
       end
+    elseif ccinfo.is_wasm then
+      return '.wasm', true
     elseif ccinfo.is_windows or ccinfo.is_cygwin then
       return '.exe', true
     elseif ccinfo.is_mirc then
@@ -364,6 +368,12 @@ function compiler.find_binutil(binname) --luacov:disable
   -- transform for example 'x86_64-pc-linux-gnu-gcc-11.1.0' -> 'x86_64-pc-linux-gnu-ar'
   bin = cc:gsub('%-[0-9.]+$',''):gsub('[%w+_.]+$', binname)
   if bin:find(binname..'$') and fs.findbinfile(bin) then return bin end
+  -- try to get from -dumpmachine
+  local dumpmachine_stdout = executor.evalex(cc .. ' -dumpmachine')
+  if dumpmachine_stdout and #dumpmachine_stdout > 0 then
+    bin = dumpmachine_stdout:match('[^\n]+')..'-'..binname
+    if fs.findbinfile(bin) then return bin end
+  end
   return binname
 end --luacov:enable
 
@@ -495,7 +505,9 @@ function compiler.compile_binary(cfile, outfile, compileopts)
   if not config.no_cache then
     local cfile_mtime = fs.getmodtime(cfile)
     local binfile_mtime = fs.getmodtime(binfile)
-    if cfile_mtime and binfile_mtime and cfile_mtime <= binfile_mtime then
+    local binfile_size = fs.getsize(binfile)
+    if cfile_mtime and binfile_mtime and cfile_mtime <= binfile_mtime and
+       binfile_size and binfile_size > 0 then
       if config.verbose then console.info("using cached binary " .. binfile) end
       return binfile, isexe
     end
