@@ -1,163 +1,71 @@
-require 'string'
-require 'vector'
-require 'allocators.default'
-require 'C.stdlib'
-require 'path'
+local fs = @record{}
 
-## if ccinfo.is_windows then
-local WIN32_FIND_DATAA: type <cimport,cinclude'<windows.h>',cincomplete> = @record{
-    cFileName: cstring,
+local fs.constants = @record{}
+local fs.constants.F_OK: integer = 0
+local fs.constants.R_OK: integer = 2
+local fs.constants.W_OK: integer = 4
+local fs.constants.X_OK: integer = 8
+
+local fs.Stats = @record{
+    dev: uinteger,
+    ino: uinteger,
+    mode: uinteger,
+    nlink: integer,
+    uid: integer,
+    gid: integer,
+    rdev: integer,
+    blksize: integer,
+    blocks: integer,
+    size: int64,
+    ctime: int64,
+    mtime: int64,
+    atime: int64,
+    birthtime: int64
 }
-local function FindFirstFileA(lpFileName: cstring <const>, hData: *WIN32_FIND_DATAA): pointer <cimport,cinclude'<fileapi.h>'> end
-local function FindNextFileA(hFind: pointer, hData: *WIN32_FIND_DATAA): cint <cimport,cinclude'<fileapi.h>'> end
-local function GetFullPathNameA(
-    lpFileName: cstring <const>,
-    nBufferLength: cushort,
-    lpBuffer: cstring,
-    lpFilePart: *cstring
-): cushort <cimport,cinclude'<fileapi.h>'> end
-local function FindClose(hFind: pointer): cchar <cimport,cinclude'<fileapi.h>'> end
-local fsDirectoryIterator: type = @record{
-    dir: pointer,
-    data: WIN32_FIND_DATAA,
-    first: boolean,
+
+local fs.Dirent = @record{
+    name: string,
+    path: string,
+    size: int64,
+    ctime: int64,
+    mtime: int64,
+    atime: int64
 }
 
-local function GetCurrentDirectoryA(nBufferLength: cushort, lpBuffer: cstring): cushort <cimport,cinclude'<windows.h>'> end
-local function SetCurrentDirectoryA(lpPathName: cstring <const>): cchar <cimport,cinclude'<windows.h>'> end
-
-## else
-local dirent: type <cimport,cinclude'<dirent.h>',cincomplete,ctypedef'dirent'> = @record{
-    d_name: cstring,
-}
-local function opendir(path: cstring): pointer <cimport,cinclude'<dirent.h>'> end
-local function readdir(dir: pointer): *dirent <cimport,cinclude'<dirent.h>'> end
-local function closedir(dir: pointer): void <cimport,cinclude'<dirent.h>'> end
-local fsDirectoryIterator: type = @record{
-    dir: pointer,
-}
-local function chdir(path: cstring <const>): int <cimport,cinclude'<dirent.h>'> end
-local function get_current_dir_name(): cstring <cimport,cinclude'<dirent.h>'> end
-## end
-global fs = @record{}
-
-function fsDirectoryIterator:__next(index: integer): (boolean, integer, string)
 ## if ccinfo.is_windows then
-    while self.first or FindNextFileA(self.dir, &self.data) ~= 0 do
-        if self.first then
-            self.first = false
-        end
-        local name = string.copy(self.data.cFileName)
-        if name == "." or name == ".." then
-            continue
-        end
-        return true, index+1, name
-    end
+local function access(path: cstring, mode: cint): cint <cimport'_access',cinclude'<io.h>'> end
 ## else
-    local d = (@dirent){}
-    while true do
-        local d = readdir(self.dir)
-        if not d then
-            break
-        end
-        local name = string.copy(d.d_name)
-        if name == "." or name == ".." then
-            continue
-        end
-        return true, index+1, name
-    end
-## end
-    return false, -1, (@string){}
-end
-
-function fsDirectoryIterator:__pairs(): (auto, *fsDirectoryIterator, integer)
-    return fsDirectoryIterator.__next, self, -1
-end
-
-function fsDirectoryIterator:__close()
-## if ccinfo.is_windows then
-    FindClose(self.dir)
-## else
-    closedir(self.dir)
-## end
-end
-
-function fsDirectoryIterator:vector(): vector(string)
-    local result: vector(string)
-    for _, item in pairs(self) do
-        result:push(item)
-    end
-    return result
-end
-
-function fs.dir(path: string): (fsDirectoryIterator, string, integer)
-    local iter = (@fsDirectoryIterator){}
-## if ccinfo.is_windows then
-    if #path > 255 then
-        local size = GetFullPathNameA(path, 0, nilptr, nilptr)
-        local ppath = (@*[0]cchar)(default_allocator:xalloc0((size + 5) * #cchar))
-        GetFullPathNameA(path, size, ppath, nilptr)
-        path = "\\\\?\\"..string(ppath)
-        default_allocator:dealloc(ppath)
-    end
-    if not path:endswith("*") then
-      if not path:endswith("\\") and not path:endswith("/") then
-        path = path.."\\"
-      end
-      path = path.."*"
-    end
-    iter.dir = FindFirstFileA(path, &iter.data)
-    iter.first = true
-## else
-    iter.dir = opendir(path)
-## end
-    return iter, (@string){}, 0
-end
-
-## if ccinfo.is_windows then
-function filesystem.current_path(path: facultative(string))
-## if path.type.is_niltype then
-    local nBufferLength = GetCurrentDirectoryA(0, nilptr);
-    local path = (@*[0]cchar)(default_allocator:xalloc0((nBufferLength + 1)))
-    GetCurrentDirectoryA(nBufferLength, path)
-    local result = string.copy(path)
-    default_allocator:dealloc(path)
-    return result
-## else
-    return SetCurrentDirectoryA(path) ~= 0
-## end
-end
-## else
-function fs.current_path(path: facultative(string))
-## if path.type.is_niltype then
-    local path = get_current_dir_name();
-    local result = string.copy(path)
-    C.free(path)
-    return result
-## else
-    return chdir(path) ~= 0
-## end
-end
+local function access(path: cstring, mode: cint): cint <cimport,cinclude'<unistd.h>'> end
 ## end
 
-function fs.absolute(path: string)
-## if ccinfo.is_windows then
-    local size = GetFullPathNameA(path, 0, nilptr, nilptr)
-    local ppath = (@*[0]cchar)(default_allocator:xalloc0(size + 1))
-    GetFullPathNameA(path, size, ppath, nilptr)
-    local result = string.copy(ppath)
-    default_allocator:dealloc(ppath)
-    return result
-## else
-    local base = fs.current_path()
-    if path == "" or path == "." then
-        return base
-    end
-    if path[0] == '/'_b then
-        return path
-    end
-    return base .. "/".. path
+
+local function geterrno(): (string, integer)
+  local errno: cint <cimport,cinclude'<errno.h>'>
+  local function strerror(errnum: cint): cstring <cimport,cinclude'<string.h>'> end
+  return strerror(errno), errno
+end
+
+function fs.access(path: string, mode: facultative(integer)): (boolean, string, integer)
+## if mode.type.is_niltype then
+    local mode = fs.constants.F_OK
 ## end
+    if access(path, mode) == 0 then
+        return true, '', 0
+    end
+    return false, geterrno()
+end
+
+function fs.exists(path: string): boolean
+    local ok = fs.access(path)
+    return ok
+end
+
+function fs.stat(path: string): (*fs.Stats, string, integer)
+    return nilptr, '', -1
+end
+
+function fs.lstat(path: string): (*fs.Stats, string, integer)
+    return nilptr, '', -1
 end
 
 return fs
