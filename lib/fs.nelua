@@ -1,3 +1,7 @@
+require 'string'
+require 'C.stdlib'
+require 'allocators.default'
+
 local fs = @record{}
 
 local fs.constants = @record{}
@@ -5,6 +9,9 @@ local fs.constants.F_OK: integer = 0
 local fs.constants.R_OK: integer = 2
 local fs.constants.W_OK: integer = 4
 local fs.constants.X_OK: integer = 8
+local fs.constants.S_IFLNK: integer = 0xA000
+local fs.constants.S_IFDIR: integer = 0x4000
+local fs.constants.S_IFREG: integer = 0x8000
 
 local fs.Stats = @record{
     dev: uinteger,
@@ -37,8 +44,81 @@ local fs.RmOptions = @record{
 }
 
 ## if ccinfo.is_windows then
+
+local ULARGE_PART = @record{
+    LowPart: culong,
+    HighPart: culong
+}
+
+local ULARGE_INTEGER = @union{
+    u: ULARGE_PART,
+    QuadPart: culonglong
+}
+
+
 local function access(path: cstring, mode: cint): cint <cimport'_access',cinclude'<io.h>'> end
 local function unlink(path: cstring): cint <cimport'_unlink',cinclude'<stdio.h>'> end
+local FILE_FLAG_BACKUP_SEMANTICS: culong <cimport,nodecl,cinclude'<windows.h>'>
+local FILE_FLAG_OPEN_REPARSE_POINT: culong <cimport,nodecl,cinclude'<windows.h>'>
+local FILE_READ_ATTRIBUTES: culong <cimport,nodecl,cinclude'<windows.h>'>
+local FILE_SHARE_READ: culong <cimport,nodecl,cinclude'<windows.h>'>
+local FILE_SHARE_WRITE: culong <cimport,nodecl,cinclude'<windows.h>'>
+local FILE_SHARE_DELETE: culong <cimport,nodecl,cinclude'<windows.h>'>
+local INVALID_FILE_ATTRIBUTES: culong <cimport,nodecl,cinclude'<windows.h>'>
+local OPEN_EXISTING: culong <cimport,nodecl,cinclude'<windows.h>'>
+local FILE_ATTRIBUTE_REPARSE_POINT: culong <cimport,nodecl,cinclude'<windows.h>'>
+local FILE_ATTRIBUTE_DIRECTORY: culong <cimport,nodecl,cinclude'<windows.h>'>
+local INVALID_HANDLE_VALUE: pointer <cimport,nodecl,cinclude'<windows.h>'>
+local MAXDWORD: culong = 0xffffffff
+
+local FILETIME: type <cimport,cinclude'<windows.h>',cincomplete> = @record{
+    dwLowDateTime: culong,
+    dwHighDateTime: culong
+}
+local function filetime_to_ms(t: FILETIME): int64
+    local ui: ULARGE_INTEGER;
+    ui.u.HighPart = t.dwHighDateTime
+    ui.u.LowPart = t.dwLowDateTime
+    return (ui.QuadPart - 116444736000000000) / 10000
+end
+
+local BY_HANDLE_FILE_INFORMATION: type <cimport,cinclude'<windows.h>',cincomplete> = @record{
+    dwFileAttributes: culong,
+    ftCreationTime: FILETIME,
+    ftLastAccessTime: FILETIME,
+    ftLastWriteTime: FILETIME,
+    dwVolumeSerialNumber: culong,
+    nFileSizeHigh: culong,
+    nFileSizeLow: culong,
+    nNumberOfLinks: culong,
+    nFileIndexHigh: culong,
+    nFileIndexLow: culong,
+}
+
+local function GetFileInformationByHandle(
+    hFile: pointer <const>,
+    lpFileInformation: *BY_HANDLE_FILE_INFORMATION
+): cint <cimport,cinclude'<windows.h>'> end
+
+local function CreateFileA(
+    lpFileName: cstring <const>,
+    dwDesiredAccess: culong,
+    dwShareMode: culong,
+    lpSecurityAttributes: pointer,
+    dwCreationDisposition: culong,
+    dwFlagsAndAttributes: culong,
+    hTemplateFile: pointer
+): pointer <cimport,cinclude'<windows.h>'> end
+local function GetLastError(): culong <cimport,cinclude'<windows.h>'> end
+local function FormatMessageA(
+    dwFlags: culong,
+    lpSource: pointer,
+    dwMessageId: culong,
+    dwLanguageId: culong,
+    lpBuffer: cstring,
+    nSize: culong,
+    Arguments: pointer
+): culong <cimport,cinclude'<windows.h>'> end
 ## else
 local function access(path: cstring, mode: cint): cint <cimport,cinclude'<unistd.h>'> end
 local function unlink(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
@@ -46,9 +126,26 @@ local function unlink(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
 
 
 local function geterrno(): (string, integer)
-  local errno: cint <cimport,cinclude'<errno.h>'>
-  local function strerror(errnum: cint): cstring <cimport,cinclude'<string.h>'> end
-  return strerror(errno), errno
+    local errno: cint <cimport,cinclude'<errno.h>'>
+    local function strerror(errnum: cint): cstring <cimport,cinclude'<string.h>'> end
+    return strerror(errno), errno
+end
+
+local function wingeterrno(): (string, integer)
+    local err = GetLastError()
+    local msg = string.create(1024)
+    local size = FormatMessageA(
+        0x00001000,
+        nilptr,
+        err,
+        1033,
+        msg.data,
+        1024,
+        nilptr
+    )
+    msg.size = size
+    msg.data[size] = 0
+    return msg, err
 end
 
 function fs.access(path: string, mode: facultative(integer)): (boolean, string, integer)
@@ -66,22 +163,67 @@ function fs.exists(path: string): boolean
     return ok
 end
 
+local function common_stat(path: string, is_lstat: boolean): (*fs.Stats, string, integer)
+    local flags = FILE_FLAG_BACKUP_SEMANTICS
+    if is_lstat then
+        flags = flags | FILE_FLAG_OPEN_REPARSE_POINT
+    end
+    local handle = CreateFileA(
+        path,
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nilptr,
+        OPEN_EXISTING,
+        flags,
+        nilptr
+    )
+    if handle == nilptr or handle == INVALID_HANDLE_VALUE then
+        return nilptr, wingeterrno()
+    end
+    local info: BY_HANDLE_FILE_INFORMATION
+    if GetFileInformationByHandle(
+        handle,
+        &info
+    ) == 0 then
+        return nilptr, wingeterrno()
+    end
+    local st = default_allocator:new(@fs.Stats)
+    if info.dwFileAttributes ~= INVALID_FILE_ATTRIBUTES then
+        if (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == FILE_ATTRIBUTE_REPARSE_POINT then
+            st.mode = st.mode | fs.constants.S_IFLNK
+        end
+        if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY then
+            st.mode = st.mode | fs.constants.S_IFDIR;
+        else
+            st.mode = st.mode | fs.constants.S_IFREG;
+        end
+    end
+    st.dev = info.dwVolumeSerialNumber
+    st.size = (info.nFileSizeHigh * (MAXDWORD + 1)) + info.nFileSizeLow
+    st.ino = (info.nFileIndexHigh * (MAXDWORD + 1)) + info.nFileIndexLow
+    st.nlink = info.nNumberOfLinks
+    st.atime = filetime_to_ms(info.ftLastAccessTime)
+    st.mtime = filetime_to_ms(info.ftLastWriteTime)
+    st.ctime = filetime_to_ms(info.ftCreationTime)
+    return st, '', 0
+end
+
 function fs.stat(path: string): (*fs.Stats, string, integer)
-    return nilptr, '', -1
+    return common_stat(path, false)
 end
 
 function fs.lstat(path: string): (*fs.Stats, string, integer)
-    return nilptr, '', -1
+    return common_stat(path, true)
 end
 
 function fs.rm(path: string, options: facultative(fs.RmOptions)): (boolean, string, integer)
 ## if options.type.is_niltype then
     local options = (@fs.RmOptions){
-        recursive: false
+        recursive = false
     }
 ## end
     local stat, msg, code = fs.stat(path)
-    if code != 0 then
+    if code ~= 0 then
         return false, msg, code
     end
 end
