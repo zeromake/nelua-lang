@@ -32,10 +32,16 @@ local fs.Dirent = @record{
     atime: int64
 }
 
+local fs.RmOptions = @record{
+    recursive: boolean
+}
+
 ## if ccinfo.is_windows then
 local function access(path: cstring, mode: cint): cint <cimport'_access',cinclude'<io.h>'> end
+local function unlink(path: cstring): cint <cimport'_unlink',cinclude'<stdio.h>'> end
 ## else
 local function access(path: cstring, mode: cint): cint <cimport,cinclude'<unistd.h>'> end
+local function unlink(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
 ## end
 
 
@@ -66,6 +72,18 @@ end
 
 function fs.lstat(path: string): (*fs.Stats, string, integer)
     return nilptr, '', -1
+end
+
+function fs.rm(path: string, options: facultative(fs.RmOptions)): (boolean, string, integer)
+## if options.type.is_niltype then
+    local options = (@fs.RmOptions){
+        recursive: false
+    }
+## end
+    local stat, msg, code = fs.stat(path)
+    if code != 0 then
+        return false, msg, code
+    end
 end
 
 return fs
