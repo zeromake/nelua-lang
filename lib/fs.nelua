@@ -69,7 +69,7 @@ local OPEN_EXISTING: culong <cimport,nodecl,cinclude'<windows.h>'>
 local FILE_ATTRIBUTE_REPARSE_POINT: culong <cimport,nodecl,cinclude'<windows.h>'>
 local FILE_ATTRIBUTE_DIRECTORY: culong <cimport,nodecl,cinclude'<windows.h>'>
 local INVALID_HANDLE_VALUE: pointer <cimport,nodecl,cinclude'<windows.h>'>
-local MAXDWORD: culong = 0xffffffff
+local MAXDWORD: culong <cimport,nodecl,cinclude'<windows.h>'>
 
 local FILETIME: type <cimport,cinclude'<windows.h>',cincomplete> = @record{
     dwLowDateTime: culong,
@@ -119,11 +119,69 @@ local function FormatMessageA(
     nSize: culong,
     Arguments: pointer
 ): culong <cimport,cinclude'<windows.h>'> end
+local function wingeterrno(): (string, integer)
+    local err = GetLastError()
+    local msg = string.create(256)
+    local size = FormatMessageA(
+        0x00001000,
+        nilptr,
+        err,
+        1033,
+        msg.data,
+        256,
+        nilptr
+    )
+    msg.size = size
+    msg.data[size] = 0
+    return msg, err
+end
 ## else
 local function access(path: cstring, mode: cint): cint <cimport,cinclude'<unistd.h>'> end
 local function unlink(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
+local timespec: type <cimport,cinclude'<sys/stat.h>',ctypedef,cincomplete> = @record{
+    tv_sec: clong,
+    tv_nsec: clong
+}
+## if ccinfo.is_apple then
+## cdefine '_DARWIN_C_SOURCE'
+local StatRecord: type <cimport,cinclude'<sys/stat.h>',ctypedef'stat'> = @record{
+    st_dev: cint,
+    st_mode: cushort,
+    st_nlink: cushort,
+    st_ino: culonglong,
+    st_uid: cuint,
+    st_gid: cuint,
+    st_rdev: cint,
+    st_size: clonglong,
+    st_atimespec: timespec,
+    st_mtimespec: timespec,
+    st_ctimespec: timespec,
+    st_blocks: clonglong,
+    st_blksize: cint,
+}
+## else
+local StatRecord: type <cimport,cinclude'<sys/stat.h>',ctypedef'stat'> = @record{
+    st_dev: cint,
+    st_mode: cushort,
+    st_nlink: cushort,
+    st_ino: culonglong,
+    st_uid: cuint,
+    st_gid: cuint,
+    st_rdev: cint,
+    st_size: clonglong,
+    st_atim: timespec,
+    st_mtim: timespec,
+    st_ctim: timespec,
+    st_blocks: clonglong,
+    st_blksize: cint,
+}
 ## end
-
+local function st_lstat(path: cstring, st: *StatRecord): cint <cimport'lstat',cinclude'<sys/stat.h>'> end
+local function st_stat(path: cstring, st: *StatRecord): cint <cimport'stat',cinclude'<sys/stat.h>'> end
+local function timespec_to_ms(tv: timespec): int64
+    return tv.tv_sec * 1000 + (tv.tv_nsec / 1000000);
+end
+## end
 
 local function geterrno(): (string, integer)
     local errno: cint <cimport,cinclude'<errno.h>'>
@@ -131,22 +189,6 @@ local function geterrno(): (string, integer)
     return strerror(errno), errno
 end
 
-local function wingeterrno(): (string, integer)
-    local err = GetLastError()
-    local msg = string.create(1024)
-    local size = FormatMessageA(
-        0x00001000,
-        nilptr,
-        err,
-        1033,
-        msg.data,
-        1024,
-        nilptr
-    )
-    msg.size = size
-    msg.data[size] = 0
-    return msg, err
-end
 
 function fs.access(path: string, mode: facultative(integer)): (boolean, string, integer)
 ## if mode.type.is_niltype then
@@ -164,6 +206,7 @@ function fs.exists(path: string): boolean
 end
 
 local function common_stat(path: string, is_lstat: boolean): (*fs.Stats, string, integer)
+## if ccinfo.is_windows then
     local flags = FILE_FLAG_BACKUP_SEMANTICS
     if is_lstat then
         flags = flags | FILE_FLAG_OPEN_REPARSE_POINT
@@ -206,6 +249,33 @@ local function common_stat(path: string, is_lstat: boolean): (*fs.Stats, string,
     st.mtime = filetime_to_ms(info.ftLastWriteTime)
     st.ctime = filetime_to_ms(info.ftCreationTime)
     return st, '', 0
+## else
+    local s: StatRecord
+    local res: cint
+    if is_lstat then
+        res = st_lstat(path, &s)
+    else
+        res = st_stat(path, &s)
+    end
+    if res ~= 0 then
+        return nilptr, geterrno()
+    end
+    local st = default_allocator:new(@fs.Stats)
+    st.mode = s.st_mode
+    st.dev = s.st_dev
+    st.size = s.st_size
+    st.ino = s.st_ino
+    st.nlink = s.st_nlink
+    st.rdev = s.st_rdev
+    st.uid = s.st_uid
+    st.gid = s.st_gid
+    st.atime = timespec_to_ms(s.st_atimespec)
+    st.mtime = timespec_to_ms(s.st_mtimespec)
+    st.ctime = timespec_to_ms(s.st_ctimespec)
+    st.blksize = s.st_blksize
+    st.blocks = s.st_blocks
+    return st, '', 0
+## end
 end
 
 function fs.stat(path: string): (*fs.Stats, string, integer)
