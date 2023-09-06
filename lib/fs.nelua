@@ -21,9 +21,9 @@ local fs.Stats = @record{
     uid: integer,
     gid: integer,
     rdev: integer,
+    size: int64,
     blksize: integer,
     blocks: integer,
-    size: int64,
     ctime: int64,
     mtime: int64,
     atime: int64,
@@ -131,10 +131,55 @@ local function wingeterrno(): (string, integer)
         256,
         nilptr
     )
-    msg.size = size
-    msg.data[size] = 0
-    return msg, err
+    return msg:subview(0, size), err
 end
+
+local SymbolicLinkReparseBuffer = @record{
+    SubstituteNameOffset: cushort,
+    SubstituteNameLength: cushort,
+    PrintNameOffset: cushort,
+    PrintNameLength: cushort,
+    Flags: culong,
+    PathBuffer: cchar[1]
+}
+local MountPointReparseBuffer = @record{
+    SubstituteNameOffset: cushort,
+    SubstituteNameLength: cushort,
+    PrintNameOffset: cushort,
+    PrintNameLength: cushort,
+    PathBuffer: cchar[1]
+}
+
+local GenericReparseBuffer = @record{
+    PathBuffer: cchar[1]
+}
+
+local REPARSE_BUFFER = @union{
+    SymbolicLinkReparseBuffer: SymbolicLinkReparseBuffer,
+    MountPointReparseBuffer: MountPointReparseBuffer,
+    GenericReparseBuffer: GenericReparseBuffer
+}
+
+local REPARSE_DATA_BUFFER = @record{
+    ReparseTag: culong,
+    ReparseDataLength: cushort,
+    Reserved: cushort,
+    DUMMY: REPARSE_BUFFER
+}
+
+local function DeviceIoControl(
+    hDevice: pointer,
+    dwIoControlCode: culong,
+    lpInBuffer: pointer <const>,
+    nInBufferSize: culong,
+    lpOutBuffer: pointer,
+    nOutBufferSize: culong,
+    lpBytesReturned: *culong,
+    lpOverlapped: pointer
+): cint <cimport,cinclude'<windows.h>'> end
+
+local 
+
 ## else
 local function access(path: cstring, mode: cint): cint <cimport,cinclude'<unistd.h>'> end
 local function unlink(path: cstring): cint <cimport,cinclude'<unistd.h>'> end
@@ -146,34 +191,35 @@ local timespec: type <cimport,cinclude'<sys/stat.h>',ctypedef,cincomplete> = @re
 ## cdefine '_DARWIN_C_SOURCE'
 local StatRecord: type <cimport,cinclude'<sys/stat.h>',ctypedef'stat'> = @record{
     st_dev: cint,
+    st_ino: culonglong,
     st_mode: cushort,
     st_nlink: cushort,
-    st_ino: culonglong,
     st_uid: cuint,
     st_gid: cuint,
     st_rdev: cint,
     st_size: clonglong,
+    st_blocks: clonglong,
+    st_blksize: cint,
     st_atimespec: timespec,
     st_mtimespec: timespec,
     st_ctimespec: timespec,
-    st_blocks: clonglong,
-    st_blksize: cint,
+    st_birthtimespec: timespec
 }
 ## else
 local StatRecord: type <cimport,cinclude'<sys/stat.h>',ctypedef'stat'> = @record{
     st_dev: cint,
+    st_ino: culonglong,
     st_mode: cushort,
     st_nlink: cushort,
-    st_ino: culonglong,
     st_uid: cuint,
     st_gid: cuint,
     st_rdev: cint,
     st_size: clonglong,
-    st_atim: timespec,
-    st_mtim: timespec,
-    st_ctim: timespec,
     st_blocks: clonglong,
     st_blksize: cint,
+    st_atim: timespec,
+    st_mtim: timespec,
+    st_ctim: timespec
 }
 ## end
 local function st_lstat(path: cstring, st: *StatRecord): cint <cimport'lstat',cinclude'<sys/stat.h>'> end
@@ -261,19 +307,26 @@ local function common_stat(path: string, is_lstat: boolean): (*fs.Stats, string,
         return nilptr, geterrno()
     end
     local st = default_allocator:new(@fs.Stats)
-    st.mode = s.st_mode
     st.dev = s.st_dev
-    st.size = s.st_size
     st.ino = s.st_ino
+    st.mode = s.st_mode
     st.nlink = s.st_nlink
-    st.rdev = s.st_rdev
     st.uid = s.st_uid
     st.gid = s.st_gid
+    st.rdev = s.st_rdev
+    st.size = s.st_size
+    st.blksize = s.st_blksize
+    st.blocks = s.st_blocks
+## if ccinfo.is_apple then
     st.atime = timespec_to_ms(s.st_atimespec)
     st.mtime = timespec_to_ms(s.st_mtimespec)
     st.ctime = timespec_to_ms(s.st_ctimespec)
-    st.blksize = s.st_blksize
-    st.blocks = s.st_blocks
+    st.birthtime = timespec_to_ms(s.st_birthtimespec)
+## else
+    st.atime = timespec_to_ms(s.st_atim)
+    st.mtime = timespec_to_ms(s.st_mtim)
+    st.ctime = timespec_to_ms(s.st_ctim)
+## end
     return st, '', 0
 ## end
 end
