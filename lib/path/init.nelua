@@ -22,6 +22,9 @@ local function getcwd(buff: cstring, size: cint): cstring <cimport,cinclude'<uni
 ## end
 
 function path.posix.translate(s: string)
+    if #s == 0 then
+        return '.'
+    end
     local sb: stringbuilder
     local prev: byte = 0
     for i = 0, <#s do
@@ -109,6 +112,9 @@ local function path_split(s: string, sep: byte)
 end
 
 function path.posix.dirname(s: string)
+    if #s == 0 then
+        return '.'
+    end
     local dir = path_split(s, path.posix.sep_b)
     return dir
 end
@@ -131,6 +137,9 @@ function path.posix.extname(s: string)
 end
 
 function path.posix.normalize(s: string)
+    if #s == 0 then
+        return '.'
+    end
     local sb: stringbuilder
     local prev: byte = 0
     local count: usize = 0
@@ -177,6 +186,10 @@ function path.posix.resolve(...: varargs)
         return p
     end
     return path.posix.absolute(p)
+end
+
+function path.posix.toNamespacedPath(p: string)
+    return p
 end
 
 --------------------------- win32 impl ------------------------
@@ -227,8 +240,19 @@ function path.win32.join(...: varargs)
     return sb:promote()
 end
 
+local function isWindowsDeviceRoot(b: byte)
+    return (b >= 'A'_b and b <= 'Z'_b) or (b >= 'a'_b and b <= 'z'_b)
+end
+
 function path.win32.is_absolute(s: string)
-    return #s > 2 and ((s[0] >= 'A'_b and s[0] <= 'Z'_b) or (s[0] >= 'a'_b and s[0] <= 'z'_b)) and s[1] == ':'_b
+    return (
+        #s > 0 and
+        (s[0] == '\\' or  s[0] == '/')
+    ) or (
+        #s > 2 and
+        isWindowsDeviceRoot(s[0]) and
+        s[1] == ':'_b
+    )
 end
 
 function path.win32.current_path(s: facultative(string))
@@ -260,6 +284,9 @@ function path.win32.absolute(s: string)
 end
 
 function path.win32.dirname(s: string)
+    if #s == 0 then
+        return '.'
+    end
     local dir = path_split(s, path.win32.sep_b)
     return dir
 end
@@ -281,6 +308,9 @@ function path.win32.extname(s: string)
 end
 
 function path.win32.normalize(s: string)
+    if #s == 0 then
+        return '.'
+    end
     local sb: stringbuilder
     local prev: byte = 0
     local count: usize = 0
@@ -329,6 +359,28 @@ function path.win32.resolve(...: varargs)
     return path.win32.absolute(p)
 end
 
+function path.win32.toNamespacedPath(p: string)
+    if p:startswith("\\\\?\\") then
+        return p
+    end
+    local resolvedPath = path.win32.is_absolute(p) and p or path.win32.resolve(p)
+    if #resolvedPath < 3 then
+        return p
+    end
+    if resolvedPath:startswith("\\\\") then
+        if resolvedPath[2] ~= '.'_b and resolvedPath[2] ~= '?'_b then
+            return "\\\\?\\UNC"..resolvedPath:subview(1)
+        end
+    elseif
+        isWindowsDeviceRoot(resolvedPath[0]) and
+        resolvedPath[1] == ':'_b and
+        resolvedPath[2] == '\\'_b
+    then
+        return "\\\\?\\"..resolvedPath
+    end
+    return p
+end
+
 ## if ccinfo.is_windows then
 local path.delimiter <const,comptime> = path.win32.delimiter
 local path.sep <const,comptime> = path.win32.sep
@@ -342,6 +394,7 @@ local path.basename = path.win32.basename
 local path.extname = path.win32.extname
 local path.normalize = path.win32.normalize
 local path.resolve = path.win32.resolve
+local path.toNamespacedPath = path.win32.toNamespacedPath
 ## else
 local path.delimiter <const,comptime> = path.posix.delimiter
 local path.sep <const,comptime> = path.posix.sep
@@ -355,5 +408,6 @@ local path.basename = path.posix.basename
 local path.extname = path.posix.extname
 local path.normalize = path.posix.normalize
 local path.resolve = path.posix.resolve
+local path.toNamespacedPath = path.posix.toNamespacedPath
 ## end
 return path

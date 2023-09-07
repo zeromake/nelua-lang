@@ -2,6 +2,8 @@ require 'string'
 require 'C.stdlib'
 require 'allocators.default'
 
+local pathModule = require 'path'
+
 local fs = @record{}
 
 local fs.constants = @record{}
@@ -206,9 +208,14 @@ local function DeviceIoControl(
     lpOverlapped: pointer
 ): cint <cimport,cinclude'<windows.h>'> end
 
+local function toNamespacedPath(path: string) <inline>
+    return #path < 255 and path or pathModule.win32.toNamespacedPath(path)
+end
+
 local function getReparseData(path: string): (*REPARSE_DATA_BUFFER, string, integer)
+    local p = toNamespacedPath(path)
     local file = CreateFileA(
-        path,
+        p,
         0,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nilptr,
@@ -315,8 +322,9 @@ local function common_stat(path: string, is_lstat: boolean): (*fs.Stats, string,
     if is_lstat then
         flags = flags | FILE_FLAG_OPEN_REPARSE_POINT
     end
+    local p = toNamespacedPath(path)
     local handle = CreateFileA(
-        path,
+        p,
         FILE_READ_ATTRIBUTES,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nilptr,
