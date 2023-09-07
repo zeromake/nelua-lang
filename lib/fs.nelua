@@ -280,6 +280,8 @@ local StatRecord: type <cimport,cinclude'<sys/stat.h>',ctypedef'stat'> = @record
 ## end
 local function st_lstat(path: cstring, st: *StatRecord): cint <cimport'lstat',cinclude'<sys/stat.h>'> end
 local function st_stat(path: cstring, st: *StatRecord): cint <cimport'stat',cinclude'<sys/stat.h>'> end
+local ssize_t: type <cimport,cinclude'<unistd.h>',nodecl> = @clong
+local function readlink(path: cstring <const>, buffer: cstring, size: csize): ssize_t <cimport,cinclude'<unistd.h>'> end
 local function timespec_to_ms(tv: timespec): int64
     return tv.tv_sec * 1000 + (tv.tv_nsec / 1000000);
 end
@@ -452,6 +454,19 @@ function fs.readlink(path: string): (string, string, integer)
     end
     return target, '', 0
 ## else
+    local bufferSize: usize = 256
+    local buffer = (@*[0]cchar)(default_allocator:xalloc(bufferSize * #cchar))
+    while true do
+        local rc = readlink(path, buffer, bufferSize)
+        if rc < 0 then
+            return '', geterrno()
+        elseif rc < bufferSize then
+            buffer[bufferSize] = 0
+            return buffer, '', 0
+        end
+        buffer = (@*[0]cchar)(default_allocator:xrealloc(buffer, bufferSize * 2, bufferSize))
+        bufferSize = bufferSize * 2
+    end
 ## end
 end
 
