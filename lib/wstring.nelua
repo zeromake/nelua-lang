@@ -57,7 +57,7 @@ end
 
 
 local wstring_convertible_concept: type = #[concept(function(x)
-    if x.type.is_pointer and x.type.subtype == primtypes.wchar_t then
+    if x.type.is_pointer and x.type.subtype == primtypes.cwchar_t then
         return true
     elseif x.type.is_string then
         return true
@@ -66,7 +66,7 @@ local wstring_convertible_concept: type = #[concept(function(x)
     end
 end)]#
 
-function wstring.__convert(s: string)
+function wstring.__convert(s: wstring_convertible_concept)
 ## if s.type.is_string then
     local size = _mbstowcs_l(nilptr, s.data, 0, __global_locale)
     assert(size > 0, 'utf8 convert ucs2 error')
@@ -82,6 +82,10 @@ function wstring.__convert(s: string)
     clone.size = size
     return clone
 ## end
+end
+
+function wstring.len(s: *wstring_char_t <const>)
+  return wcslen(s)
 end
 
 function wstring:__tostring(): string

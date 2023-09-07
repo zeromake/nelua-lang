@@ -544,9 +544,9 @@ function compiler.compile_binary(cfile, outfile, compileopts)
   if config.strip_bin and (config.shared_lib or isexe) and (not ccinfo.is_mirc or ccinfo.is_wasm) then
     compiler.strip_binary(binfile, compileopts)
   end
-  if isexe and ccinfo.is_windows then
-    compiler.manifest_binary(binfile)
-  end
+  -- if isexe and ccinfo.is_windows then
+  --   compiler.manifest_binary(binfile)
+  -- end
   lfs.chdir(pwd)
   return binfile, isexe
 end

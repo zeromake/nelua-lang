@@ -9,9 +9,14 @@ local fs.constants.F_OK: integer = 0
 local fs.constants.R_OK: integer = 2
 local fs.constants.W_OK: integer = 4
 local fs.constants.X_OK: integer = 8
+local fs.constants.S_IFMT: integer = 0xF000
 local fs.constants.S_IFLNK: integer = 0xA000
 local fs.constants.S_IFDIR: integer = 0x4000
 local fs.constants.S_IFREG: integer = 0x8000
+
+local fs.constants.S_IREAD: integer = 0x0100
+local fs.constants.S_IWRITE: integer = 0x0080
+local fs.constants.S_IEXEC: integer = 0x0040
 
 local fs.Stats = @record{
     dev: uinteger,
@@ -30,6 +35,18 @@ local fs.Stats = @record{
     birthtime: int64
 }
 
+function fs.Stats:isSymbolicLink(): boolean
+    return (self.mode & fs.constants.S_IFMT) == fs.constants.S_IFLNK
+end
+
+function fs.Stats:isFile(): boolean
+    return (self.mode & fs.constants.S_IFMT) == fs.constants.S_IFREG
+end
+
+function fs.Stats:isDirectory(): boolean
+    return (self.mode & fs.constants.S_IFMT) == fs.constants.S_IFDIR
+end
+
 local fs.Dirent = @record{
     name: string,
     path: string,
@@ -44,6 +61,7 @@ local fs.RmOptions = @record{
 }
 
 ## if ccinfo.is_windows then
+local wstring = require 'wstring'
 
 local ULARGE_PART = @record{
     LowPart: culong,
@@ -70,6 +88,10 @@ local FILE_ATTRIBUTE_REPARSE_POINT: culong <cimport,nodecl,cinclude'<windows.h>'
 local FILE_ATTRIBUTE_DIRECTORY: culong <cimport,nodecl,cinclude'<windows.h>'>
 local INVALID_HANDLE_VALUE: pointer <cimport,nodecl,cinclude'<windows.h>'>
 local MAXDWORD: culong <cimport,nodecl,cinclude'<windows.h>'>
+local FSCTL_GET_REPARSE_POINT: culong <cimport,nodecl,cinclude'<windows.h>'>
+local IO_REPARSE_TAG_SYMLINK: culong <cimport,nodecl,cinclude'<windows.h>'>
+local IO_REPARSE_TAG_MOUNT_POINT: culong <cimport,nodecl,cinclude'<windows.h>'>
+local IO_REPARSE_TAG_APPEXECLINK: culong <cimport,nodecl,cinclude'<windows.h>'>
 
 local FILETIME: type <cimport,cinclude'<windows.h>',cincomplete> = @record{
     dwLowDateTime: culong,
@@ -133,32 +155,38 @@ local function wingeterrno(): (string, integer)
     )
     return msg:subview(0, size), err
 end
-
+local MAXIMUM_REPARSE_DATA_BUFFER_SIZE: usize = 16 * 1024
 local SymbolicLinkReparseBuffer = @record{
     SubstituteNameOffset: cushort,
     SubstituteNameLength: cushort,
     PrintNameOffset: cushort,
     PrintNameLength: cushort,
     Flags: culong,
-    PathBuffer: cchar[1]
+    PathBuffer: [1]cwchar_t
 }
 local MountPointReparseBuffer = @record{
     SubstituteNameOffset: cushort,
     SubstituteNameLength: cushort,
     PrintNameOffset: cushort,
     PrintNameLength: cushort,
-    PathBuffer: cchar[1]
+    PathBuffer: [1]cwchar_t
 }
 
 local GenericReparseBuffer = @record{
-    PathBuffer: cchar[1]
+    DataBuffer: [1]cchar
+}
+local AppExecLinkReparseBuffer = @record{
+    StringCount: culong,
+    StringList: [1]cwchar_t
 }
 
 local REPARSE_BUFFER = @union{
     SymbolicLinkReparseBuffer: SymbolicLinkReparseBuffer,
     MountPointReparseBuffer: MountPointReparseBuffer,
-    GenericReparseBuffer: GenericReparseBuffer
+    GenericReparseBuffer: GenericReparseBuffer,
+    AppExecLinkReparseBuffer: AppExecLinkReparseBuffer
 }
+
 
 local REPARSE_DATA_BUFFER = @record{
     ReparseTag: culong,
@@ -178,7 +206,35 @@ local function DeviceIoControl(
     lpOverlapped: pointer
 ): cint <cimport,cinclude'<windows.h>'> end
 
-local 
+local function getReparseData(path: string): (*REPARSE_DATA_BUFFER, string, integer)
+    local file = CreateFileA(
+        path,
+        0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nilptr,
+        OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+        nilptr
+    )
+    if file == nilptr or file == INVALID_HANDLE_VALUE then
+        return nilptr, wingeterrno()
+    end
+    local reparseData: *REPARSE_DATA_BUFFER = (@*REPARSE_DATA_BUFFER)(default_allocator:xalloc(MAXIMUM_REPARSE_DATA_BUFFER_SIZE))
+    local bufferUsed: culong
+    if DeviceIoControl(
+        file,
+        FSCTL_GET_REPARSE_POINT,
+        nilptr,
+        0,
+        reparseData,
+        MAXIMUM_REPARSE_DATA_BUFFER_SIZE,
+        &bufferUsed,
+        nilptr
+    ) == 0 then
+        return nilptr, wingeterrno()
+    end
+    return reparseData, '', 0
+end
 
 ## else
 local function access(path: cstring, mode: cint): cint <cimport,cinclude'<unistd.h>'> end
@@ -337,6 +393,66 @@ end
 
 function fs.lstat(path: string): (*fs.Stats, string, integer)
     return common_stat(path, true)
+end
+
+function fs.readlink(path: string): (string, string, integer)
+    local st, msg, code = fs.lstat(path)
+    if code ~= 0 then
+        return '', msg, code
+    end
+    if not st:isSymbolicLink() then
+        return '', 'not is symbolic link', -1
+    end
+## if ccinfo.is_windows then
+    local reparseData, msg, code = getReparseData(path)
+    if code ~= 0 or reparseData == nilptr then
+        return '', msg, code
+    end
+    local target: string
+    switch (reparseData.ReparseTag) do
+    case IO_REPARSE_TAG_SYMLINK then
+        local offset: usize = reparseData.DUMMY.SymbolicLinkReparseBuffer.SubstituteNameOffset / #cwchar_t
+        local buffer: *[0]cwchar_t = &reparseData.DUMMY.SymbolicLinkReparseBuffer.PathBuffer[0]
+        local w_target = &buffer[offset]
+        local ws: wstring <close> = w_target
+        target = tostring(ws)
+        if target:startswith('\\??\\') then
+            if
+                #target >= 6 and
+                (target[4] >= 'A'_b and target[4] <= 'Z'_b) or
+                (target[4] >= 'a'_b and target[4] <= 'z'_b) and
+                target[5] == ':'_b and
+                (#target == 6 or target[6] == '\\'_b)
+            then
+                target = target:subview(4)
+            elseif
+                #target >= 8 and
+                (target:startswith('\\??\\unc\\') or target:startswith('\\??\\UNC\\'))
+            then
+                target = '\\' .. target:subview(7)
+            end
+        end
+    case IO_REPARSE_TAG_MOUNT_POINT then
+        local offset: usize = reparseData.DUMMY.MountPointReparseBuffer.SubstituteNameOffset / #cwchar_t
+        local buffer: *[0]cwchar_t = &reparseData.DUMMY.MountPointReparseBuffer.PathBuffer[0]
+        local w_target = &buffer[offset]
+        local ws: wstring <close> = w_target
+        target = tostring(ws)
+        assert(target:startswith('\\??\\'))
+        target = target:subview(4)
+    case IO_REPARSE_TAG_APPEXECLINK then
+        assert(reparseData.DUMMY.AppExecLinkReparseBuffer.StringCount >= 3)
+        local w_target = &reparseData.DUMMY.AppExecLinkReparseBuffer.StringList[0]
+        for i = 0, <2 do
+            local len = wstring.len(w_target)
+            w_target = &(@*[0]cwchar_t)(w_target)[len+1]
+        end
+        local ws: wstring <close> = w_target
+        target = tostring(ws)
+    end
+    return target, '', 0
+## else
+## end
 end
 
 function fs.rm(path: string, options: facultative(fs.RmOptions)): (boolean, string, integer)
