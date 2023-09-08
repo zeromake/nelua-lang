@@ -558,11 +558,19 @@ function compiler.get_gdb_version() --luacov:disable
   end
 end --luacov:enable
 
+function compiler.get_lldb_version() --luacov:disable
+  local stdout = executor.evalex('lldb' .. ' -v')
+  if stdout and stdout:match("lldb version") then
+    return stdout:match('%d+%.%d+%.%d+')
+  end
+end
+
 function compiler.get_run_command(binaryfile, runargs, compileopts)
   binaryfile = fs.abspath(binaryfile)
   -- run with a gdb?
   if config.debug then --luacov:disable
     local gdbver = compiler.get_gdb_version()
+    local lldbver = compiler.get_lldb_version()
     if gdbver then
       local gdbargs = {
         '-q',
@@ -576,7 +584,16 @@ function compiler.get_run_command(binaryfile, runargs, compileopts)
         '--args', binaryfile,
       }
       tabler.insertvalues(gdbargs, runargs)
-      return config.gdb, gdbargs
+      return gdbver, gdbargs
+    elseif lldbver then
+      local lldbargs = {
+        binaryfile,
+      }
+      if #runargs > 0 then
+        table.insert(lldbargs, '--')
+        tabler.insertvalues(lldbargs, runargs)
+      end
+      return 'lldb', lldbargs
     end
   end --luacov:enable
   -- choose the runner
