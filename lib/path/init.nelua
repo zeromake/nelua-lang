@@ -91,9 +91,18 @@ function path.posix.absolute(s: string)
 end
 
 local function path_split(s: string, sep: byte)
+    if #s == 0 or (#s == 1 and s[0] == sep) then
+        return (@string){}, (@string){}, (@string){}
+    end
     local sep_index = -1;
     local ext_index = -1;
-    for i = #s -1, 0, -1 do
+    local offset = 0
+    local start = #s -1
+    while start >= 0 and s[start] == sep do
+        start = start - 1
+        offset = offset + 1
+    end
+    for i = start, 0, -1 do
         if s[i] == sep then
             sep_index = i
             break
@@ -102,11 +111,15 @@ local function path_split(s: string, sep: byte)
             ext_index = i
         end
     end
+    local end_index = #s - offset
     if sep_index >= 0 and ext_index >= 0 then
-        return s:sub(0, sep_index+1), s:sub(sep_index+1, ext_index), s:sub(ext_index)
+        return s:sub(0, sep_index+1), s:sub(sep_index+1, ext_index), s:sub(ext_index, end_index)
     end
     if sep_index >= 0 then
-        return s:sub(0, sep_index+1), s:sub(sep_index+1), (@string){}
+        return s:sub(0, sep_index+1), s:sub(sep_index+1, end_index), (@string){}
+    end
+    if ext_index >= 0 then
+        return (@string){}, s:sub(0, ext_index), s:sub(ext_index, end_index)
     end
     return (@string){}, s, (@string){}
 end
@@ -292,6 +305,9 @@ function path.win32.dirname(s: string)
 end
 
 function path.win32.basename(s: string, e: facultative(boolean))
+    if #s >= 2 and isWindowsDeviceRoot(s[0]) and s[1] == ':'_b then
+        s = s:subview(2)
+    end
     local dir, basename, ext = path_split(s, path.win32.sep_b)
 ## if e.type.is_niltype then
     local e = true
