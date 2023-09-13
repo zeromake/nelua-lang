@@ -560,7 +560,7 @@ end --luacov:enable
 
 function compiler.get_lldb_version() --luacov:disable
   local stdout = executor.evalex('lldb' .. ' -v')
-  if stdout and stdout:match("lldb version") then
+  if stdout and stdout:match("lldb version") or stdout:match("lldb-") then
     return stdout:match('%d+%.%d+%.%d+')
   end
 end
