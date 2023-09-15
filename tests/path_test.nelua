@@ -93,4 +93,57 @@ nester.describe("path", function()
         expect.equal(path.win32.dirname("////"), "/")
         expect.equal(path.win32.dirname("foo"), ".")
     end)
+    nester.it("", function()
+        local checks: [][2]string = {
+            {'file.nelua', '.nelua'},
+            {'', ''},
+            {'/path/to/file', ''},
+            {'/path/to/file.ext', '.ext'},
+            {'/path.to/file.ext', '.ext'},
+            {'/path.to/file', ''},
+            {'/path.to/.file', ''},
+            {'/path.to/.file.ext', '.ext'},
+            {'/path/to/f.ext', '.ext'},
+            {'/path/to/..ext', '.ext'},
+            {'/path/to/..', ''},
+            {'file', ''},
+            {'file.ext', '.ext'},
+            {'.file', ''},
+            {'.file.ext', '.ext'},
+            {'/file', ''},
+            {'/file.ext', '.ext'},
+            {'/.file', ''},
+            {'/.file.ext', '.ext'},
+            {'.path/file.ext', '.ext'},
+            {'file.ext.ext', '.ext'},
+            {'file.', '.'},
+            {'.', ''},
+            {'./', ''},
+            {'.file.ext', '.ext'},
+            {'.file', ''},
+            {'.file.', '.'},
+            {'.file..', '.'},
+            {'..', ''},
+            {'../', ''},
+            {'..file.ext', '.ext'},
+            {'..file', '.file'},
+            {'..file.', '.'},
+            {'..file..', '.'},
+            {'...', '.'},
+            {'...ext', '.ext'},
+            {'....', '.'},
+            {'file.ext/', '.ext'},
+            {'file.ext//', '.ext'},
+            {'file/', ''},
+            {'file//', ''},
+            {'file./', '.'},
+            {'file.//', '.'},
+        }
+        for i, check in ipairs(checks) do
+            local input = check[0]
+            local expected = check[1]
+            local actual = path.posix.extname(input)
+            expect.equal(actual, expected)
+        end
+    end)
 end)
