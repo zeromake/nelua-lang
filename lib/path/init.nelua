@@ -167,7 +167,7 @@ end
 
 function path.posix.extname(s: string)
     local _, _, ext = path_split(s, path.posix.sep_b)
-    return ext
+    return #ext == 1 and "" or ext
 end
 
 function path.posix.normalize(s: string)
@@ -222,7 +222,7 @@ function path.posix.resolve(...: varargs)
     return path.posix.absolute(p)
 end
 
-function path.posix.toNamespacedPath(p: string)
+function path.posix.to_namespaced_path(p: string)
     return p
 end
 
@@ -281,11 +281,12 @@ end
 function path.win32.is_absolute(s: string)
     return (
         #s > 0 and
-        (s[0] == '\\' or  s[0] == '/')
+        isPathSeparator(s[0])
     ) or (
         #s > 2 and
         isWindowsDeviceRoot(s[0]) and
-        s[1] == ':'_b
+        s[1] == ':'_b and
+        isPathSeparator(s[2])
     )
 end
 
@@ -383,7 +384,7 @@ end
 
 function path.win32.extname(s: string)
     local _, _, ext = path_split(s, path.win32.sep_b)
-    return ext
+    return #ext == 1 and "" or ext
 end
 
 function path.win32.normalize(s: string)
@@ -438,7 +439,7 @@ function path.win32.resolve(...: varargs)
     return path.win32.absolute(p)
 end
 
-function path.win32.toNamespacedPath(p: string)
+function path.win32.to_namespaced_path(p: string)
     if p:startswith("\\\\?\\") then
         return p
     end
@@ -473,7 +474,7 @@ local path.basename = path.win32.basename
 local path.extname = path.win32.extname
 local path.normalize = path.win32.normalize
 local path.resolve = path.win32.resolve
-local path.toNamespacedPath = path.win32.toNamespacedPath
+local path.to_namespaced_path = path.win32.to_namespaced_path
 ## else
 local path.delimiter <const,comptime> = path.posix.delimiter
 local path.sep <const,comptime> = path.posix.sep
@@ -487,6 +488,6 @@ local path.basename = path.posix.basename
 local path.extname = path.posix.extname
 local path.normalize = path.posix.normalize
 local path.resolve = path.posix.resolve
-local path.toNamespacedPath = path.posix.toNamespacedPath
+local path.to_namespaced_path = path.posix.to_namespaced_path
 ## end
 return path

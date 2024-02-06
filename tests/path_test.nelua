@@ -93,7 +93,7 @@ nester.describe("path", function()
         expect.equal(path.win32.dirname("////"), "/")
         expect.equal(path.win32.dirname("foo"), ".")
     end)
-    nester.it("", function()
+    nester.it("extname", function()
         local checks: [][2]string = {
             {'file.nelua', '.nelua'},
             {'', ''},
@@ -101,49 +101,78 @@ nester.describe("path", function()
             {'/path/to/file.ext', '.ext'},
             {'/path.to/file.ext', '.ext'},
             {'/path.to/file', ''},
-            {'/path.to/.file', ''},
+            {'/path.to/.file', '.file'},
             {'/path.to/.file.ext', '.ext'},
             {'/path/to/f.ext', '.ext'},
             {'/path/to/..ext', '.ext'},
             {'/path/to/..', ''},
             {'file', ''},
             {'file.ext', '.ext'},
-            {'.file', ''},
+            {'.file', '.file'},
             {'.file.ext', '.ext'},
             {'/file', ''},
             {'/file.ext', '.ext'},
-            {'/.file', ''},
+            {'/.file', '.file'},
             {'/.file.ext', '.ext'},
             {'.path/file.ext', '.ext'},
             {'file.ext.ext', '.ext'},
-            {'file.', '.'},
+            {'file.', ''},
             {'.', ''},
             {'./', ''},
             {'.file.ext', '.ext'},
-            {'.file', ''},
-            {'.file.', '.'},
-            {'.file..', '.'},
+            {'.file', '.file'},
+            {'.file.', ''},
+            {'.file..', ''},
             {'..', ''},
             {'../', ''},
             {'..file.ext', '.ext'},
             {'..file', '.file'},
-            {'..file.', '.'},
-            {'..file..', '.'},
-            {'...', '.'},
+            {'..file.', ''},
+            {'..file..', ''},
+            {'...', ''},
             {'...ext', '.ext'},
-            {'....', '.'},
+            {'....', ''},
             {'file.ext/', '.ext'},
             {'file.ext//', '.ext'},
             {'file/', ''},
             {'file//', ''},
-            {'file./', '.'},
-            {'file.//', '.'},
+            {'file./', ''},
+            {'file.//', ''},
         }
         for i, check in ipairs(checks) do
             local input = check[0]
             local expected = check[1]
             local actual = path.posix.extname(input)
-            expect.equal(actual, expected)
+            expect.equal(actual, expected, string.format("index: %d `%s` `%s`", i, check[0], check[1]))
+            local actual2 = path.win32.extname(input:gsub("/", "\\"))
+            expect.equal(actual2, expected, string.format("index: %d `%s` `%s`", i, check[0], check[1]))
         end
     end)
+    nester.it("is_absolute", function()
+        expect.equal(path.win32.is_absolute('/'), true)
+        expect.equal(path.win32.is_absolute('//'), true)
+        expect.equal(path.win32.is_absolute('//server'), true)
+        expect.equal(path.win32.is_absolute('//server/file'), true)
+        expect.equal(path.win32.is_absolute('\\\\server\\file'), true)
+        expect.equal(path.win32.is_absolute('\\\\server'), true)
+        expect.equal(path.win32.is_absolute('\\\\'), true)
+        expect.equal(path.win32.is_absolute('c'), false)
+        expect.equal(path.win32.is_absolute('c:'), false)
+        expect.equal(path.win32.is_absolute('c:\\'), true)
+        expect.equal(path.win32.is_absolute('c:/'), true)
+        expect.equal(path.win32.is_absolute('c://'), true)
+        expect.equal(path.win32.is_absolute('C:/Users/'), true)
+        expect.equal(path.win32.is_absolute('C:\\Users\\'), true)
+        expect.equal(path.win32.is_absolute('C:cwd/another'), false)
+        expect.equal(path.win32.is_absolute('C:cwd\\another'), false)
+        expect.equal(path.win32.is_absolute('directory/directory'), false)
+        expect.equal(path.win32.is_absolute('directory\\directory'), false)
+
+        expect.equal(path.posix.is_absolute('/home/foo'), true)
+        expect.equal(path.posix.is_absolute('/home/foo/..'), true)
+        expect.equal(path.posix.is_absolute('bar/'), false)
+        expect.equal(path.posix.is_absolute('./baz'), false)
+    end)
+
+    
 end)

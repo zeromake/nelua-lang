@@ -346,23 +346,29 @@ end
 global expect: type = @record{}
 
 -- Checks if `a` is equals to `b`, if not raises a test error.
-function expect.equal(a: auto, b: auto): void <alwayspoly>
+function expect.equal(a: auto, b: auto, msg: facultative(string)): void <alwayspoly>
+  ## if msg.type.is_niltype then
+  local msg: string = 'error raised'
+  ## end
   ## local polysrcloc = polysrcloc
   if not (a == b) then
     last_error_filename = #[polysrcloc.srcname or '']#
     last_error_lineno = #[polysrcloc.lineno or 0]#
-    local msg: string = string.format('expected value be equal\nfirst value:\n%s\nsecond value:\n%s', a, b)
+    local msg: string = string.format('expected value be equal\nfirst value:\n%s\nsecond value:\n%s\nmsg:\n%s', a, b, msg)
     error(msg, 0)
   end
 end
 
 -- Checks if `a` is different from `b`, if not raises a test error.
-function expect.not_equal(a: auto, b: auto): void <alwayspoly>
+function expect.not_equal(a: auto, b: auto, msg: facultative(string)): void <alwayspoly>
+  ## if msg.type.is_niltype then
+  local msg: string = 'error raised'
+  ## end
   ## local polysrcloc = polysrcloc
   if a == b then
     last_error_filename = #[polysrcloc.srcname or '']#
     last_error_lineno = #[polysrcloc.lineno or 0]#
-    local msg: string <close> = string.format('expected values to be not equal\nfirst value:\n%s\nsecond value:\n%s', a, b)
+    local msg: string <close> = string.format('expected values to be not equal\nfirst value:\n%s\nsecond value:\n%smsg:\n%s', a, b, msg)
     error(msg, 0)
   end
 end
