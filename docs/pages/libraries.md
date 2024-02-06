@@ -70,6 +70,11 @@ Currently this is an alias to `panic` and terminates the application,
 but in the future, in case the language get an exception system,
 it may be changed to an exception being thrown.
 
+Remarks: Error messages are dependent on the host environment the program is being compiled in,
+it may include terminal color codes and path to host machine files to make debugging error locations easier.
+You can disable this behavior by enabling the pragma `noerrorloc`,
+it will make the program error messages reproducible when building across different host machines.
+
 ### assert
 
 ```nelua
@@ -78,6 +83,11 @@ global function assert(v: auto, message: facultative(string))
 
 Raises an error if the value `v` is evaluated to `false`, otherwise, returns `v`.
 In case of error, `message` is the error message, when absent defaults to `"assertion failed!"`.
+
+Remarks: Error messages are dependent on the host environment the program is being compiled in,
+it may include terminal color codes and path to host machine files to make debugging error locations easier.
+You can disable this behavior by using the pragma `noerrorloc`,
+it will make the program error messages reproducible when building across different host machines.
 
 ### check
 
@@ -88,6 +98,11 @@ global function check(cond: boolean, message: facultative(string)): void
 If `cond` is true it does nothing, otherwise raises an error with `message` and terminates the application.
 Similar to `assert` however it's completely omitted when compiling in release mode or with pragma `nochecks`.
 Use for assertive programming, to check if conditions are met without impacting performance of production code.
+
+Remarks: Error messages are dependent on the host environment the program is being compiled in,
+it may include terminal color codes and path to host machine files to make debugging error locations easier.
+You can disable this behavior by using the pragma `noerrorloc`,
+it will make the program error messages reproducible when building across different host machines.
 
 ### likely
 
@@ -626,7 +641,7 @@ Like `filestream:writef` but also flushes the standard output.
 function filestream:print(...: varargs): void
 ```
 
-Like `filestream:print`, but writes to `io.stdout` using `io.write`.
+Like `print`, but writes to a filestream.
 
 ### filestream:lines
 
@@ -1598,6 +1613,8 @@ Spans are especially useful for making functions with arguments that
 are agnostic to the input container type.
 
 Spans are also known as "fat pointer" or "slice" in some other languages.
+
+Remarks: A span initialized from a list of unnamed fields points to an array of the list elements.
 
 ### spanT
 
@@ -2581,6 +2598,9 @@ function utf8.char(...: varargs): string
 Receives zero or more integers, converts each one to its corresponding UTF-8 byte sequence,
 and returns a string with the concatenation of all these sequences.
 
+Containers of integers (e.g vector, sequence or span) are also accepted as arguments,
+returning a string with the concatenation of all their elements.
+
 ### utf8.codes
 
 ```nelua
@@ -2859,6 +2879,8 @@ A vector has the following semantics:
 otherwise the behavior is undefined, in case this is needed then try the `sequence` library.
 * Any failure when growing a vector raises an error.
 
+Remarks: A vector initialized from a list of unnamed fields is filled with the list elements.
+
 ### vectorT
 
 ```nelua
@@ -3050,6 +3072,8 @@ thus the list itself is passed by reference by default (like lua tables again).
 
 A sequence is typically used as a more efficient table that
 can hold only sequences of a fixed value type.
+
+Remarks: A sequence initialized from a list of unnamed fields is filled with the list elements.
 
 ### sequenceT
 
@@ -4134,6 +4158,7 @@ Values smaller than 100 mean the collector will not wait to start a new cycle.
 ```nelua
 global GCFlags: type = @enum(usize) {
   MARK = 1 << 16, -- Marked for collection (used only internally).
+  FINALIZE = 1 << 17, -- Finalizer should be called before deallocating.
   ROOT = AllocatorFlags.GCRoot, -- Allocation always scanned and never collected.
   LEAF = AllocatorFlags.GCLeaf, -- Allocation never scanned (contains no pointers).
   BRANCH = AllocatorFlags.GCBranch, -- Allocation should be scanned despite being detected as leaf (contains pointers).

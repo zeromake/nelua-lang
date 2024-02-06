@@ -601,6 +601,8 @@ function visitors.Annotation(context, node, opts)
       context.cmainimports = context.cmainimports or {}
       table.insert(context.cmainimports, (codename:gsub('nelua_', '')))
     end
+    context.cimports = context.cimports or {}
+    context.cimports[codename] = true
   elseif name == 'nickname' then
     assert(objattr._type and objattr.is_nameable)
     local type, nickname = objattr, params
@@ -663,7 +665,6 @@ function visitors.Annotation(context, node, opts)
 end
 
 function visitors.Id(context, node)
-  if node.checked then return node.attr end
   local name = node[1]
   local state = context.state
   if name == 'type' and state.intypeexpr  then
@@ -698,8 +699,6 @@ function visitors.Id(context, node)
   symbol:add_use_by(state.funcscope.funcsym)
   if symbol.type then
     node.done = symbol
-  else
-    node.checked = true
   end
   return symbol
 end
@@ -1506,7 +1505,7 @@ local function visitor_Call(context, node, argnodes, calleetype, calleesym, call
       end
       attr.calleesym = calleesym
       if calleetype then
-        attr.type = calleetype:get_return_type(1)
+        attr.type, attr.value = calleetype:get_return_type_and_value(1)
         sideeffect = calleetype.sideeffect
         if calleetype.symbol then
           calleetype.symbol:add_use_by(context.state.funcscope.funcsym)
@@ -2299,14 +2298,8 @@ function visitors.VarDecl(context, node)
       if vartype.is_nolvalue then
         varnode:raisef("variable declaration cannot be of the type '%s'", vartype)
       end
-      if vartype.is_type and not valnode then
-        varnode:raisef("a type declaration must assign to a type")
-      end
     end
     assert(symbol.type == vartype)
-    if (varnode.attr.comptime or varnode.attr.const) and not varnode.attr.nodecl and not valnode then
-      varnode:raisef("const variables must have an initial value")
-    end
     if valnode then
       context:traverse_node(valnode, {symbol=symbol, desiredtype=vartype})
       valtype = valnode.attr.type
@@ -2320,9 +2313,14 @@ function visitors.VarDecl(context, node)
           valtype = primtypes.niltype
         end
       end
-      if varnode.attr.comptime and not (valnode.attr.comptime and valtype) then
-        varnode:raisef("compile time variables can only assign to compile time expressions")
-      elseif vartype and vartype.is_auto then
+      if varnode.attr.comptime then
+        if not (valnode.attr.comptime and valtype) then
+          varnode:raisef("compile time variables can only assign to compile time expressions")
+        elseif (valnode.attr.value == nil and valnode.attr.type ~= primtypes.niltype) then
+          varnode:raisef("compile time variables cannot be of type '%s'", vartype)
+        end
+      end
+      if vartype and vartype.is_auto then
         if not valtype then
           varnode:raisef("auto variables must be assigned to expressions where type is known ahead")
         elseif valtype.is_nolvalue then
@@ -2333,6 +2331,16 @@ function visitors.VarDecl(context, node)
         varnode:raisef("cannot assign imported variables, only imported types can be assigned")
       elseif vartype == primtypes.type and valtype ~= primtypes.type then
         valnode:raisef("cannot assign a type to '%s'", valtype)
+      end
+    else
+      if i > 1 and (valtype and valtype.is_type) then
+        varnode:raisef("a type declaration can only assign to the first assignment expression")
+      end
+      if vartype and vartype.is_type then
+        varnode:raisef("a type declaration must assign to a type")
+      end
+      if (varnode.attr.comptime or varnode.attr.const) and not varnode.attr.nodecl then
+        varnode:raisef("const variables must have an initial value")
       end
     end
     if not inscope then
@@ -2489,6 +2497,9 @@ function visitors.Return(context, node)
         end
       end
       if retnode then
+        if rettype and rettype.is_type then
+          funcscope:add_return_value(i, retnode.attr.value)
+        end
         done = done and retnode.done and true
       end
     end
@@ -2496,7 +2507,10 @@ function visitors.Return(context, node)
   else
     context:traverse_nodes(retnodes)
     for i,retnode,rettype in iargnodes(retnodes) do
-      funcscope:add_return_type(i, rettype, retnode and retnode.attr.value, retnode)
+      funcscope:add_return_type(i, rettype, retnode)
+      if rettype and retnode and rettype.is_type then
+        funcscope:add_return_value(i, retnode.attr.value)
+      end
     end
   end
 end
@@ -2529,7 +2543,11 @@ function visitors.In(context, node)
   else
     context:traverse_node(retnode)
     local retattr = retnode.attr
-    exprscope:add_return_type(1, retattr.type, retattr.value, retnode)
+    local rettype = retattr.type
+    exprscope:add_return_type(1, retattr.type, retnode)
+    if rettype and rettype.is_type then
+      exprscope:add_return_value(1, retattr.value)
+    end
   end
 end
 
@@ -3259,7 +3277,7 @@ local function override_binary_op(context, node, opname, lnode, rnode, ltype, rt
   else
     mtname = '__' .. opname
   end
-  if mtname == '__eq' and ltype ~= rtype and not (ltype.is_stringy and ltype.is_stringy == rtype.is_stringy) then
+  if mtname == '__eq' and ltype ~= rtype and ltype.is_stringy ~= rtype.is_stringy then
     -- __eq metamethod is called only for same record types (except for stringy types)
     return
   end

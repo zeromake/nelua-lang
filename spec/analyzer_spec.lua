@@ -659,7 +659,13 @@ it("function definition", function()
   ]])
   expect.analyze_ast([[
     local function f(): type return @integer end
+    local int = f()
+    local a: int = 0
   ]])
+  expect.analyze_error([[
+    local function f() return @integer, @string end
+    local int, str = f()
+  ]], "a type declaration can only assign to the first assignment expression")
   expect.analyze_error([[
     do
       global function f() end
@@ -1254,6 +1260,10 @@ it("records", function()
     local Record
     local a <comptime> = Record{}
   ]], "can only assign to compile time expressions")
+  expect.analyze_error([[
+    local Box = @record{n: number}
+    local b: Box <comptime> = {n=3}
+  ]], "compile time variables cannot be of type")
   expect.ast_type_equals(
     "local a: record{x: boolean}; local b = a.x",
     "local a: record{x: boolean}; local b: boolean = a.x")
@@ -1826,6 +1836,7 @@ it("require builtin", function()
   expect.analyze_ast("require 'examples.helloworld'")
   expect.analyze_error("require 'somelualib'", 'not found')
   expect.analyze_error("local a = 'dynamiclib'; require(a)", 'runtime require unsupported')
+  expect.analyze_error([[local function f() require 'string' end]], 'must always be required from the top scope')
 end)
 
 it("strict mode", function()
@@ -1951,6 +1962,13 @@ it("decltype concept", function()
   ]], [[
     local x: integer = 1
     local y: integer = x
+  ]])
+  expect.ast_type_equals([[
+    local x: auto = nil
+    local y: decltype(x) = x
+  ]], [[
+    local x: niltype = nil
+    local y: niltype = x
   ]])
   expect.ast_type_equals([[
     local Boolean: decltype(boolean) = @boolean

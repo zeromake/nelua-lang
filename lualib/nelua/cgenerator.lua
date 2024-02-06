@@ -512,7 +512,6 @@ end
 function visitors.Id(context, node, emitter, untypedinit)
   local attr = node.attr
   local type = attr.type
-  assert(not type.is_comptime)
   if type.is_nilptr then
     emitter:add_null()
   elseif type.is_niltype then
@@ -689,13 +688,15 @@ function visitors.Call(context, node, emitter, untyped)
   else -- usual function call
     local callee = calleenode
     local calleeattr = calleenode.attr
+    local calleesym = attr.calleesym
     if calleeattr.builtin then -- is a builtin call?
       local builtin = cbuiltins.calls[calleeattr.name]
       callee = builtin(context, node, emitter)
-    elseif attr.calleesym then
-      if not attr.calleesym.anonfunc then -- pass node for anon functions to force its definition
-        callee = attr.calleesym
+    elseif calleesym then
+      if calleesym.type.is_function then -- force declaration of functions
+        emitter:fork():add(calleenode)
       end
+      callee = calleesym
     end
     if callee then -- call not omitted?
       visitor_Call(context, node, emitter, argnodes, callee)
@@ -714,7 +715,16 @@ function visitors.DotIndex(context, node, emitter, untypedinit)
   local attr = node.attr
   local objnode = node[2]
   local objtype = objnode.attr.type
-  if attr.comptime then -- compile-time constant
+  if objnode.attr.requirename then -- require call
+    local rollbackpos = emitter:get_pos()
+    emitter:add_indent()
+    emitter:add(objnode)
+    if emitter:get_pos() == rollbackpos+1 then
+      emitter:rollback(rollbackpos) -- revert text added
+    else
+      emitter:add(';')
+    end
+  elseif attr.comptime then -- compile-time constant
     emitter:add_literal(attr, untypedinit)
   elseif objtype.is_type then -- global field
     emitter:add(context:declname(attr))
@@ -836,7 +846,7 @@ function visitors.Return(context, node, emitter)
     else
       rettype = functype:get_return_type(1)
     end
-    if not deferemitter:empty() and retnode and not retnode.is_Id and not retnode.attr.comptime then
+    if not deferemitter:empty() and not (retnode and retnode.attr.comptime) then
       local retname = funcscope:generate_name('_ret')
       emitter:add_indent(rettype, ' ', retname, ' = ')
       emitter:add_converted_val(rettype, retnode)
@@ -1062,9 +1072,11 @@ function visitors.Repeat(context, node, emitter)
   emitter:add_indent_ln("do {")
   local scope = context:push_forked_scope(node)
   scope.emit_repeat_stop = function(block_emitter)
+    context:push_node(node) -- to fix get_visiting_node() call
     block_emitter:add_indent('_repeat_stop = ')
     block_emitter:add_val2boolean(condnode)
     block_emitter:add_ln(';')
+    context:pop_node(node)
   end
   emitter:add(blocknode)
   context:pop_scope()
@@ -1515,7 +1527,6 @@ function visitors.BinaryOp(context, node, emitter, untypedinit)
       emitter:add_zeroed_type_literal(type)
       emitter:add_ln(';')
       if opname == 'and' then
-        assert(not attr.ternaryand)
         emitter:add_indent(primtypes.boolean, ' cond_ = ')
         emitter:add_val2boolean('t1_', type)
         emitter:add_ln(';')
@@ -1608,13 +1619,14 @@ function cgenerator.emit_warning_pragmas(context)
   #pragma clang diagnostic ignored "-Wmissing-field-initializers"
   #pragma clang diagnostic ignored "-Wparentheses-equality"
   #pragma clang diagnostic ignored "-Wtautological-compare"
+  #pragma clang diagnostic ignored "-Wmissing-braces"
   #ifndef __cplusplus
-    #pragma clang diagnostic ignored "-Wmissing-braces"
     #pragma clang diagnostic ignored "-Wincompatible-pointer-types"
     #pragma clang diagnostic error   "-Wimplicit-function-declaration"
     #pragma clang diagnostic error   "-Wimplicit-int"
   #else
     #pragma clang diagnostic ignored "-Wnarrowing"
+    #pragma clang diagnostic ignored "-Wc99-designator"
   #endif
 #elif defined(__GNUC__) && __GNUC__ >= 5
   #pragma GCC diagnostic ignored "-Wtype-limits"

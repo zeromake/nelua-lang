@@ -28,6 +28,9 @@ function builtins.require(context, node, argnodes)
     if not reqname then
       node:raisef('runtime require unsupported, use require with a compile time string')
     end
+    if reqname == 'string' and not context.scope.is_topscope then
+      node:raisef("the 'string' module is special and must always be required from the top scope")
+    end
     local reldir = argnode.src.name and fs.dirname(argnode.src.name) or nil
     local libpath = config.path
     if #context.libpaths > 0 then -- try to insert the lib path after the local lib path
@@ -133,6 +136,25 @@ function builtins.require(context, node, argnodes)
   attr.functype = type
   attr.value = funcscope.retvalues and funcscope.retvalues[1]
   funcsym.type = type
+  return type
+end
+
+function builtins.error(context, node, argnodes)
+  context:traverse_nodes(argnodes)
+  local argtypes = types.argtypes_from_argnodes(argnodes, 2)
+  if not argtypes then -- wait last argument type resolution
+    return false
+  end
+  local nargs = #argtypes
+  local argattrs
+  if nargs == 1 then
+    argattrs = {Attr{name='msg', type=primtypes.string}}
+  elseif nargs == 0 then
+    argattrs = {}
+  end
+  local type = types.FunctionType(argattrs, {}, node)
+  type.sideeffect = true
+  type.noreturn = true
   return type
 end
 

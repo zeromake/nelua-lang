@@ -213,6 +213,9 @@ it("nil", function()
     local function g() return f() end
     local res = g()
     assert(res == nil)
+
+    local function f(x: auto): auto x = nil return x end
+    f(nil)
   ]=], 'nil')
 end)
 
@@ -1717,6 +1720,14 @@ it("binary conditional operators", function()
     assert((false and false or true) == true)
     assert((false and false or false) == false)
 
+    assert(('' and true or false) == true)
+    assert((0 and true or false) == true)
+    assert((false and true or false) == false)
+    assert((true and false or true) == true)
+    assert((nil and false or true) == true)
+    assert((niltype and false or true) == true)
+    assert((niltype and 'true' or 'false') == 'true')
+
     assert((false and 1 or 2) == 2)
     assert((true and 1 or 2) == 1)
     -- assert((true and 1 and 2 or 3) == 2)
@@ -1959,6 +1970,12 @@ it("variable shadowing", function()
     local function exit(code: cint) <cimport> end
     local function exit(code: cint) <cimport> end
     exit(0)
+
+    do -- issue #243
+      local function time(timer: *ctime_t): ctime_t <cimport,cinclude'<time.h>',nodecl> end
+      local time = time(nilptr)
+      assert(time > 0)
+    end
   ]])
 end)
 
@@ -2392,9 +2409,9 @@ it("record methods", function()
     function vec2pointer:len() return self.x + self.y end
     assert(v:len() == 3)
 
-    local Math = @record{}
-    function Math.abs(x: number): number <cimport'fabs',cinclude'<math.h>'> end
-    assert(Math.abs(-1) == 1)
+    local Str = @record{}
+    function Str.len(x: cstring): cint <cimport'strlen',cinclude'<string.h>'> end
+    assert(Str.len('hello') == 5)
 
     local Foo = @record{x: integer, f: function(*Foo): integer}
     local foo: Foo = {1}
@@ -2520,6 +2537,25 @@ it("record metametods", function()
 
     a.diff = true
     assert(not (a == a)) assert(a ~= a)
+  ]])
+
+  expect.run_c([[
+    local Integer = @record{x: integer}
+    function Integer.__eq(a: auto, b: auto): boolean
+      ## if a.type.nickname == 'Integer' then
+      local a: integer = a.x
+      ## end
+      ## if b.type.nickname == 'Integer' then
+      local b: integer = b.x
+      ## end
+      return a == b
+    end
+
+    local a: Integer = {x=3}
+    assert(a == 3)
+    assert(a ~= 0)
+    assert(3 == a)
+    assert(0 ~= a)
   ]])
 end)
 
@@ -2893,6 +2929,9 @@ it("nilptr", function()
   expect.run_c([[
     local p: pointer = nilptr
     assert(p == nilptr)
+
+    local function f(x: auto): auto x = nilptr return x end
+    f(nilptr)
   ]])
 end)
 
@@ -3159,6 +3198,21 @@ it("sizeof builtin", function()
   ]])
 end)
 
+it("error builtin", function()
+  local noerrorloc = config.pragmas.noerrorloc
+  config.pragmas.noerrorloc = true
+  expect.generate_c(
+    "error()",
+    "nelua_error()")
+  expect.generate_c(
+    "error'ERROR'",
+    [[nelua_error_string(((nlstring){(uint8_t*)"ERROR", 5}))]])
+  config.pragmas.noerrorloc = noerrorloc
+
+  expect.run_error_c([[error()]], {'1:6:', 'runtime error', 'error!'})
+  expect.run_error_c([[error'FAILED']], {'1:6:', 'runtime error', 'FAILED'})
+end)
+
 it("assert builtin", function()
   local abort = config.pragmas.abort
   config.pragmas.abort = nil
@@ -3400,6 +3454,22 @@ it("require returns", function()
     local R2: type = require 'require_tmp'
     local r2: R2 = {x = 2}
     assert(r2.x == 2)
+  ]])
+
+  fs.writefile('require_tmp.nelua', [[
+    local M = @record{}
+    function M.foo() return 'foo' end
+    return M
+  ]])
+  expect.run_c([[
+    assert(require'require_tmp'.foo() == 'foo')
+  ]])
+
+  fs.writefile('require_tmp.nelua', [[
+    return function() return 'foo' end
+  ]])
+  expect.run_c([[
+    assert(require'require_tmp'() == 'foo')
   ]])
 
   fs.deletefile('require_tmp.nelua')
@@ -3706,6 +3776,9 @@ it("deprecated", function()
     local a: integer <deprecated>
     a = 1
 
+    local b <deprecated>
+    b = 2
+
     local Rec = @record{}
     function Rec:m() <deprecated> end
     local r: Rec
@@ -3715,6 +3788,7 @@ it("deprecated", function()
   ]=], {
     "use of deprecated symbol 'f'",
     "use of deprecated symbol 'a'",
+    "use of deprecated symbol 'b'",
     "use of deprecated method 'm'",
     "use of deprecated metafield 'm'"
   }, 0)
