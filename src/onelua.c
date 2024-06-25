@@ -93,6 +93,7 @@
 #include "lstrlib.c"
 #include "ltablib.c"
 #include "lutf8lib.c"
+#include "lperformance.c"
 #include "linit.c"
 #endif
 

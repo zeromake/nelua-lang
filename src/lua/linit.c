@@ -54,6 +54,7 @@ static const luaL_Reg loadedlibs[] = {
   {LUA_LFSLIBNAME, luaopen_lfs},
   {LUA_SYSLIBNAME, luaopen_sys},
   {LUA_LPEGLABELLIBNAME, luaopen_lpeglabel},
+  {LUA_PERFORMANCELIBNAME, luaopen_performance},
   {NULL, NULL}
 };
 

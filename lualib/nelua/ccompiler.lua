@@ -13,6 +13,7 @@ local version = require 'nelua.version'
 local iterators = require 'nelua.utils.iterators'
 local platform = require 'nelua.utils.platform'
 local lfs = require 'lfs'
+local performance = require 'performance'
 
 local compiler = {
   source_extension = '.c'
@@ -461,7 +462,7 @@ function compiler.manifest_binary(binfile)
   if not mt then
     return
   end
-  os.sleep(0.3)
+  performance.sleep(0.3)
   local flags = sstream()
   flags:add(mt)
   flags:add(' ')

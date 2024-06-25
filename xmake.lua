@@ -5,7 +5,10 @@ option("rpmalloc")
 option_end()
 
 if is_plat("windows") then
-    add_cxflags("/utf-8")
+    add_cxflags("/execution-charset:utf-8", "/source-charset:utf-8", {tools = {"clang_cl", "cl"}})
+    -- 支持 struct 命名初始化
+    add_cflags("/TC", {tools = {"clang_cl", "cl"}})
+    add_cxxflags("/EHsc", {tools = {"clang_cl", "cl"}})
     if is_mode("release") then
         set_optimize("faster")
     end

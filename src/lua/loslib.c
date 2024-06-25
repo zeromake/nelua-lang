@@ -412,35 +412,6 @@ static int os_exit (lua_State *L) {
   return 0;
 }
 
-static int os_sleep (lua_State *L) {
-  lua_Number secs = luaL_optnumber(L, 1, 0.0f);
-  if (secs <= 0) {
-    return 0;
-  }
-#if defined(_WIN32)
-  uint64_t us = (uint64_t)(secs * 1000000);
-  unsigned int ms = (unsigned int)((us + 999) / 1000);
-  if((ms > 0)) {
-    Sleep((unsigned long)ms);
-  }
-#else
-  if(secs > 0) {
-    double m = modf((double)secs, 1);
-    struct timespec ts = {(time_t)floor(secs), (long)(m * 1000000000.0)};
-    {
-      bool stop = false;
-      int res = 0;
-      do {
-        errno = 0;
-        res = nanosleep((&ts), (&ts));
-        stop = res == 0 || errno != EINTR;
-      } while(!stop);
-    }
-  }
-#endif
-}
-
-
 static const luaL_Reg syslib[] = {
   {"clock",     os_clock},
   {"date",      os_date},
@@ -453,7 +424,6 @@ static const luaL_Reg syslib[] = {
   {"setlocale", os_setlocale},
   {"time",      os_time},
   {"tmpname",   os_tmpname},
-  {"sleep",     os_sleep},
   {NULL, NULL}
 };
 

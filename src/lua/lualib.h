@@ -58,6 +58,9 @@ LUAMOD_API int (luaopen_sys) (lua_State *L);
 #define LUA_LPEGLABELLIBNAME "lpeglabel"
 LUAMOD_API int (luaopen_lpeglabel) (lua_State *L);
 
+#define LUA_PERFORMANCELIBNAME "performance"
+LUAMOD_API int (luaopen_performance) (lua_State *L);
+
 /* open all previous libraries */
 LUALIB_API void (luaL_openlibs) (lua_State *L);
 
